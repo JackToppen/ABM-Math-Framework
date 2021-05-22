@@ -25,6 +25,7 @@ class Simulation:
 
         # hold the running number of agents and the step to begin at (updated by continuation mode)
         self.number_agents = 0
+        self.current_step = 0
         self.beginning_step = 1
 
         # hold the names of the agent arrays and the names of any graphs (each agent is a node)
@@ -55,6 +56,7 @@ class Simulation:
         self.size = np.array(keys["size"])
         self.output_values = keys["output_values"]
         self.output_images = keys["output_images"]
+        self.record_initial_step = keys["record_initial_step"]
         self.image_quality = keys["image_quality"]
         self.video_quality = keys["video_quality"]
         self.fps = keys["fps"]
@@ -478,6 +480,14 @@ class Simulation:
             phi = r.random() * 2 * math.pi
             radius = math.cos(phi)
             return np.array([radius * math.cos(theta), radius * math.sin(theta), math.sin(phi)])
+
+    def record_initials(self):
+        """ Records initial values for agents and image of simulation
+            space.
+        """
+        if self.current_step == 0:
+            self.step_values()
+            self.step_image()
 
     @classmethod
     def start(cls):
