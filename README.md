@@ -10,7 +10,7 @@ Developed as part of a Southeast Center for Mathematics and Biology (SCMB) seed 
 
 ##
 
-![image](images/front_page.png)
+![front_page](https://user-images.githubusercontent.com/57497258/119276534-b47f9900-bbe8-11eb-86cd-d19af556afe3.png)
 
 ##
 
