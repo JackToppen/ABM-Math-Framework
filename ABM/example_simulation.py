@@ -10,6 +10,7 @@ class ExampleSimulation(Simulation):
     """ This class inherits the Simulation class allowing it to run a
         simulation with the proper functionality.
     """
+
     def __init__(self, name, output_path):
         # initialize the Simulation object
         Simulation.__init__(self, name, output_path)
@@ -41,7 +42,7 @@ class ExampleSimulation(Simulation):
             self.info()
 
             # get all neighbors within radius of 2
-            self.get_neighbors("neighbor_graph", 2)
+            self.get_neighbors("neighbor_graph", 2.1)
 
             # call the following methods that update agent values
             self.update()
@@ -62,16 +63,16 @@ class ExampleSimulation(Simulation):
         """ Updates an agent based on the presence of neighbors.
         """
         for index in range(self.number_agents):
-            # get neighbors and make variable to hold the number of alive neighbors
+            # get neighbors and make variable to hold the number of "true" neighbors
             neighbors = self.neighbor_graph.neighbors(index)
             count = 0
 
-            # count how many alive neighbors
+            # count how many "true" neighbors
             for neighbor in neighbors:
                 if self.states[neighbor]:
                     count += 1
 
-            # if no neighbors or more than 3, die
+            # if no neighbors or more than 3, set state to "false"
             if count == 0 or count >= 3:
                 self.states[index] = False
 
@@ -99,18 +100,20 @@ class ExampleSimulation(Simulation):
 
         # determine which agents are hatching
         for index in range(self.number_agents):
-            # get neighbors and make variable to hold the number of alive neighbors
-            neighbors = self.neighbor_graph.neighbors(index)
-            count = 0
+            # if state is "true"
+            if self.states[index]:
+                # get neighbors and make variable to hold the number of "true" neighbors
+                neighbors = self.neighbor_graph.neighbors(index)
+                count = 0
 
-            # count how many alive neighbors
-            for neighbor in neighbors:
-                if self.states[neighbor]:
-                    count += 1
+                # count how many "true" neighbors
+                for neighbor in neighbors:
+                    if self.states[neighbor]:
+                        count += 1
 
-            # if alive and exactly 2 neighbors, hatch new agent
-            if self.states[index] and count == 2:
-                agents_to_hatch[index] = 1
+                # if exactly 2 neighbors, hatch new agent
+                if count == 2:
+                    agents_to_hatch[index] = 1
 
         # get indices of the hatching agents with Boolean mask and count how many added
         indices = np.arange(self.number_agents)[agents_to_hatch]
@@ -164,6 +167,7 @@ class ExampleSimulation(Simulation):
                 major = int(scale * self.radii[index])
                 minor = int(scale * self.radii[index])
 
+                # if agent state is "true", draw agent
                 if self.states[index]:
                     # draw the agent and a black outline to distinguish overlapping agents
                     color = (255, 255, 255)
