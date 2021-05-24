@@ -20,7 +20,7 @@ information on this can be found at the bottom.
 
 Download the model directly from GitHub or with the Git command shown below.
 ```
-git clone https://github.com/JackToppen/Python-hiPSC-CBM.git
+git clone https://github.com/JackToppen/Y-O-Extension-ABM.git
 ```
 
 The downloaded folder (Y-O-Extension-ABM) will contain an ***ABM*** folder (where
