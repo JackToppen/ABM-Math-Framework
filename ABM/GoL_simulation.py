@@ -6,7 +6,7 @@ from simulation import Simulation
 from backend import record_time, check_direct
 
 
-class ExampleSimulation(Simulation):
+class GoLSimulation(Simulation):
     """ This class inherits the Simulation class allowing it to run a
         simulation with the proper functionality.
     """
