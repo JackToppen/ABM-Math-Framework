@@ -235,6 +235,10 @@ class Simulation:
         if clear:
             graph.delete_edges(None)
 
+        # don't proceed if no agents
+        if self.number_agents == 0:
+            return
+
         # assign each of the agents to bins, updating the max agents in a bin (if necessary)
         bins, bins_help, bin_locations, graph.max_agents = self.assign_bins(graph.max_agents, distance)
 
