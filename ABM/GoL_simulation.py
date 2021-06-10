@@ -3,8 +3,8 @@ import cv2
 import csv
 import numpy as np
 
-from simulation import Simulation
-from backend import *
+from pythonabm import Simulation
+from pythonabm import *
 
 
 class GoLSimulation(Simulation):
@@ -18,6 +18,9 @@ class GoLSimulation(Simulation):
         # hold main output directory path
         self.output_path = output_path
 
+        # read parameters from YAML file and add them to instance variables
+        self.yaml_parameters("templates\\general.yaml")
+
         # get the following from the commandline
         self.search_radius = commandline_param("-r", int)
         self.kill_below = commandline_param("-kb", int)
@@ -27,8 +30,8 @@ class GoLSimulation(Simulation):
         self.hatch_lower = commandline_param("-hl", int)
         self.hatch_upper = commandline_param("-hu", int)
 
-    def agent_initials(self):
-        """ Overrides the agent_initials() method from the Simulation class.
+    def setup(self):
+        """ Overrides the setup() method from the Simulation class.
         """
         # add agents to the simulation
         self.add_agents(self.num_to_start)
@@ -40,35 +43,30 @@ class GoLSimulation(Simulation):
         # create graph for holding agent neighbors
         self.agent_graph("neighbor_graph")
 
-    def steps(self):
-        """ Overrides the steps() method from the Simulation class.
-        """
-        # record initial count of agents
+        # record initial values
+        self.step_values()
         self.agent_count_csv()
 
-        # iterate over all steps specified
-        for self.current_step in range(self.beginning_step, self.end_step + 1):
-            # records step run time and prints the current step and number of agents
-            self.info()
+    def step(self):
+        """ Overrides the step() method from the Simulation class.
+        """
+        # records step run time and prints the current step and number of agents
+        self.info()
 
-            # get all neighbors within radius of 2
-            self.get_neighbors("neighbor_graph", self.search_radius)
+        # get all neighbors within radius of 2
+        self.get_neighbors("neighbor_graph", self.search_radius)
 
-            # call the following methods that update agent values
-            self.update()
-            self.reproduce()
-            self.move()
+        # call the following methods that update agent values
+        self.update()
+        self.reproduce()
+        self.move()
 
-            # save multiple forms of information about the simulation at the current step
-            self.step_values()
-            self.agent_count_csv()
-            # self.step_image()
-            # self.temp()
-            # self.data()
-
-        # ends the simulation by creating a video from all of the step images
-        # self.create_video()
-        print("Done!")
+        # save multiple forms of information about the simulation at the current step
+        self.step_values()
+        self.agent_count_csv()
+        # self.step_image()
+        # self.temp()
+        # self.data()
 
     @record_time
     def update(self):
@@ -220,29 +218,34 @@ class GoLSimulation(Simulation):
             csv_object.writerow([self.number_agents])
 
     @classmethod
-    def start(cls):
+    def start(cls, output_dir):
         """ Configures/runs the model based on the specified
             simulation mode.
         """
-        output_dir = check_output_dir()  # read paths.yaml to get/make the output directory
-        name, mode = get_name_mode()  # get the name/mode of the simulation
+        # check that the output directory exists and get the starting parameters for the model
+        output_dir = check_output_dir(output_dir)
+        name, mode, final_step = starting_params()
 
         # new simulation
         if mode == 0:
-            # check that new simulation can be made
-            name = check_new_sim(name, output_dir)
-
-            # create simulation object
+            # check that new simulation can be made and create the Simulation object
+            name = check_existing(name, output_dir, new_simulation=True)
             sim = cls(name, output_dir)
 
-            # add agent arrays to object and run the simulation steps
-            sim.agent_initials()
-            sim.steps()
+            # copy model files to simulation directory, ignoring __pycache__ files
+            # direc_path = sim.main_path + name + "_copy"
+            # shutil.copytree(os.getcwd(), direc_path, ignore=shutil.ignore_patterns("__pycache__"))
+
+            # set up the simulation, run the steps, and create a video from any images
+            sim.setup()
+            for sim.current_step in range(1, sim.end_step + 1):
+                sim.step()
+            sim.create_video()
 
         # previous simulation
         else:
             # check that previous simulation exists
-            name = check_previous_sim(name, output_dir)
+            name = check_existing(name, output_dir, new_simulation=False)
 
             # continuation
             if mode == 1:
@@ -251,16 +254,14 @@ class GoLSimulation(Simulation):
                 with open(file_name, "rb") as file:
                     sim = pickle.load(file)
 
-                # update the following
-                sim.beginning_step = sim.current_step + 1  # update starting step
-                sim.end_step = get_final_step()  # update final step
-
-                # run the simulation steps
-                sim.steps()
+                # iterate through all steps and create a video from any images
+                for sim.current_step in range(sim.current_step + 1, final_step + 1):
+                    sim.step()
+                sim.create_video()
 
             # images to video
             elif mode == 2:
-                # create instance for video/path information and make video
+                # make object for video/path information and create video
                 sim = cls(name, output_dir)
                 sim.create_video()
 
