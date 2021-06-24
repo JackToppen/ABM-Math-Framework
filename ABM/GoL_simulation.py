@@ -11,12 +11,9 @@ class GoLSimulation(Simulation):
     """ This class inherits the Simulation class allowing it to run a
         simulation with the proper functionality.
     """
-    def __init__(self, name, output_path):
+    def __init__(self):
         # initialize the Simulation object
-        Simulation.__init__(self, name, output_path)
-
-        # hold main output directory path
-        self.output_path = output_path
+        Simulation.__init__(self)
 
         # read parameters from YAML file and add them to instance variables
         self.yaml_parameters("templates\\general.yaml")
@@ -61,20 +58,17 @@ class GoLSimulation(Simulation):
         self.reproduce()
         self.move()
 
+        # add/remove agents from the simulation
+        self.update_populations()
+
         # save multiple forms of information about the simulation at the current step
         self.step_values()
         self.agent_count_csv()
-        # self.step_image()
-        # self.temp()
-        # self.data()
 
     @record_time
     def update(self):
         """ Updates an agent based on the presence of neighbors.
         """
-        # create boolean array to mark agents to be removed
-        agents_to_remove = np.zeros(self.number_agents, dtype=bool)
-
         # determine which agents are being removed
         for index in range(self.number_agents):
             # get number of neighbors
@@ -82,27 +76,7 @@ class GoLSimulation(Simulation):
 
             # if meeting the conditions, remove the agent
             if count < self.kill_below or count > self.kill_above:
-                agents_to_remove[index] = 1
-
-        # get indices of agents to remove with a Boolean mask and count how many removed
-        indices = np.arange(self.number_agents)[agents_to_remove]
-        num_removed = len(indices)
-
-        # go through the agent arrays and remove the indices
-        for name in self.agent_array_names:
-            # if the array is 1-dimensional, otherwise 2-dimensional
-            if self.__dict__[name].ndim == 1:
-                self.__dict__[name] = np.delete(self.__dict__[name], indices)
-            else:
-                self.__dict__[name] = np.delete(self.__dict__[name], indices, axis=0)
-
-        # remove the indices from each graph
-        for graph_name in self.graph_names:
-            self.__dict__[graph_name].delete_vertices(indices)
-
-        # change total number of agents and print to terminal
-        self.number_agents -= num_removed
-        print("\tRemoved " + str(num_removed) + " agents")
+                self.mark_to_remove(index)
 
     @record_time
     def move(self):
@@ -125,9 +99,6 @@ class GoLSimulation(Simulation):
     def reproduce(self):
         """ If the agent meets criteria, hatch a new agent.
         """
-        # create boolean array to mark hatching agents
-        agents_to_hatch = np.zeros(self.number_agents, dtype=bool)
-
         # determine which agents are hatching
         for index in range(self.number_agents):
             # get number of neighbors
@@ -135,30 +106,7 @@ class GoLSimulation(Simulation):
 
             # if in bounds of hatch thresholds
             if self.hatch_lower < count < self.hatch_upper:
-                agents_to_hatch[index] = 1
-
-        # get indices of the hatching agents with Boolean mask and count how many added
-        indices = np.arange(self.number_agents)[agents_to_hatch]
-        num_added = len(indices)
-
-        # go through the agent arrays and add indices
-        for name in self.agent_array_names:
-            # copy the indices of the agent array data for the hatching agents
-            copies = self.__dict__[name][indices]
-
-            # add the copies to the end of the array, handle if the array is 1-dimensional or 2-dimensional
-            if self.__dict__[name].ndim == 1:
-                self.__dict__[name] = np.concatenate((self.__dict__[name], copies))
-            else:
-                self.__dict__[name] = np.concatenate((self.__dict__[name], copies), axis=0)
-
-        # go through each graph, adding one new vertex at a time
-        for graph_name in self.graph_names:
-            self.__dict__[graph_name].add_vertices(num_added)
-
-        # change total number of agents and print to terminal
-        self.number_agents += num_added
-        print("\tAdded " + str(num_added) + " agents")
+                self.mark_to_hatch(index)
 
     @record_time
     def step_image(self, background=(0, 0, 0), origin_bottom=True):
@@ -210,7 +158,7 @@ class GoLSimulation(Simulation):
         """
         # get file name and open the file
         file_name = f"{self.name}_alive.csv"
-        with open(self.output_path + file_name, "a", newline="") as file_object:
+        with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
             # create CSV object
             csv_object = csv.writer(file_object)
 
@@ -228,9 +176,13 @@ class GoLSimulation(Simulation):
 
         # new simulation
         if mode == 0:
-            # check that new simulation can be made and create the Simulation object
+            # first check that new simulation can be made and create simulation output directory
             name = check_existing(name, output_dir, new_simulation=True)
-            sim = cls(name, output_dir)
+
+            # now make simulation instance, update name, and add paths
+            sim = cls()
+            sim.name = name
+            sim.set_paths(output_dir)
 
             # copy model files to simulation directory, ignoring __pycache__ files
             # direc_path = sim.main_path + name + "_copy"
@@ -254,6 +206,9 @@ class GoLSimulation(Simulation):
                 with open(file_name, "rb") as file:
                     sim = pickle.load(file)
 
+                # update paths for the case the simulation is move to new folder
+                sim.set_paths(output_dir)
+
                 # iterate through all steps and create a video from any images
                 for sim.current_step in range(sim.current_step + 1, final_step + 1):
                     sim.step()
@@ -262,7 +217,9 @@ class GoLSimulation(Simulation):
             # images to video
             elif mode == 2:
                 # make object for video/path information and create video
-                sim = cls(name, output_dir)
+                sim = cls()
+                sim.name = name
+                sim.set_paths(output_dir)
                 sim.create_video()
 
             # zip simulation output
