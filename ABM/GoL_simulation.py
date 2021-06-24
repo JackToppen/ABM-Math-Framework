@@ -1,22 +1,34 @@
 import math
 import cv2
+import csv
 import numpy as np
 
-from simulation import Simulation
-from backend import record_time, check_direct
+from pythonabm import Simulation
+from pythonabm import *
 
 
 class GoLSimulation(Simulation):
     """ This class inherits the Simulation class allowing it to run a
         simulation with the proper functionality.
     """
-
-    def __init__(self, name, output_path):
+    def __init__(self):
         # initialize the Simulation object
-        Simulation.__init__(self, name, output_path)
+        Simulation.__init__(self)
 
-    def agent_initials(self):
-        """ Overrides the agent_initials() method from the Simulation class.
+        # read parameters from YAML file and add them to instance variables
+        self.yaml_parameters("templates\\general.yaml")
+
+        # get the following from the commandline
+        self.search_radius = commandline_param("-r", int)
+        self.kill_below = commandline_param("-kb", int)
+        self.kill_above = commandline_param("-ka", int)
+        self.num_to_start = commandline_param("-c", int)
+        self.move_value = commandline_param("-move", float)
+        self.hatch_lower = commandline_param("-hl", int)
+        self.hatch_upper = commandline_param("-hu", int)
+
+    def setup(self):
+        """ Overrides the setup() method from the Simulation class.
         """
         # add agents to the simulation
         self.add_agents(self.num_to_start)
@@ -24,65 +36,55 @@ class GoLSimulation(Simulation):
         # create the following agent arrays with initial conditions.
         self.agent_array("locations", override=np.random.rand(self.number_agents, 3) * self.size)
         self.agent_array("radii", func=lambda: 0.5)
-        self.agent_array("states", func=lambda: True)
 
-        # create graph for holding cell neighbors
+        # create graph for holding agent neighbors
         self.agent_graph("neighbor_graph")
 
-    def steps(self):
-        """ Overrides the steps() method from the Simulation class.
+        # record initial values
+        self.step_values()
+        self.agent_count_csv()
+
+    def step(self):
+        """ Overrides the step() method from the Simulation class.
         """
-        # if True, record starting values/image for the simulation
-        if self.record_initial_step:
-            self.record_initials()
+        # records step run time and prints the current step and number of agents
+        self.info()
 
-        # iterate over all steps specified
-        for self.current_step in range(self.beginning_step, self.end_step + 1):
-            # records step run time and prints the current step and number of agents
-            self.info()
+        # get all neighbors within radius of 2
+        self.get_neighbors("neighbor_graph", self.search_radius)
 
-            # get all neighbors within radius of 2
-            self.get_neighbors("neighbor_graph", 2.1)
+        # call the following methods that update agent values
+        self.update()
+        self.reproduce()
+        self.move()
 
-            # call the following methods that update agent values
-            self.update()
-            self.reproduce()
-            self.move()
+        # add/remove agents from the simulation
+        self.update_populations()
 
-            # save multiple forms of information about the simulation at the current step
-            self.step_image()
-            self.step_values()
-            self.temp()
-            self.data()
-
-        # ends the simulation by creating a video from all of the step images
-        self.create_video()
+        # save multiple forms of information about the simulation at the current step
+        self.step_values()
+        self.agent_count_csv()
 
     @record_time
     def update(self):
         """ Updates an agent based on the presence of neighbors.
         """
+        # determine which agents are being removed
         for index in range(self.number_agents):
-            # get neighbors and make variable to hold the number of "true" neighbors
-            neighbors = self.neighbor_graph.neighbors(index)
-            count = 0
+            # get number of neighbors
+            count = self.neighbor_graph.num_neighbors(index)
 
-            # count how many "true" neighbors
-            for neighbor in neighbors:
-                if self.states[neighbor]:
-                    count += 1
-
-            # if no neighbors or more than 3, set state to "false"
-            if count == 0 or count >= 3:
-                self.states[index] = False
+            # if meeting the conditions, remove the agent
+            if count < self.kill_below or count > self.kill_above:
+                self.mark_to_remove(index)
 
     @record_time
     def move(self):
         """ Assigns new location to agent.
         """
         for index in range(self.number_agents):
-            # get new location vector
-            new_location = self.locations[index] + self.random_vector()
+            # get new location position
+            new_location = self.locations[index] + self.move_value * self.random_vector()
 
             # check that the new location is within the space, otherwise use boundary values
             for i in range(3):
@@ -95,48 +97,16 @@ class GoLSimulation(Simulation):
 
     @record_time
     def reproduce(self):
-        # create boolean array to mark hatching agents
-        agents_to_hatch = np.zeros(self.number_agents, dtype=bool)
-
+        """ If the agent meets criteria, hatch a new agent.
+        """
         # determine which agents are hatching
         for index in range(self.number_agents):
-            # if state is "true"
-            if self.states[index]:
-                # get neighbors and make variable to hold the number of "true" neighbors
-                neighbors = self.neighbor_graph.neighbors(index)
-                count = 0
+            # get number of neighbors
+            count = self.neighbor_graph.num_neighbors(index)
 
-                # count how many "true" neighbors
-                for neighbor in neighbors:
-                    if self.states[neighbor]:
-                        count += 1
-
-                # if exactly 2 neighbors, hatch new agent
-                if count == 2:
-                    agents_to_hatch[index] = 1
-
-        # get indices of the hatching agents with Boolean mask and count how many added
-        indices = np.arange(self.number_agents)[agents_to_hatch]
-        num_added = len(indices)
-
-        # go through the agent arrays and add indices
-        for name in self.agent_array_names:
-            # copy the indices of the agent array data for the hatching agents
-            copies = self.__dict__[name][indices]
-
-            # add the copies to the end of the array, handle if the array is 1-dimensional or 2-dimensional
-            if self.__dict__[name].ndim == 1:
-                self.__dict__[name] = np.concatenate((self.__dict__[name], copies))
-            else:
-                self.__dict__[name] = np.concatenate((self.__dict__[name], copies), axis=0)
-
-        # go through each graph, adding one new vertex at a time
-        for graph_name in self.graph_names:
-            self.__dict__[graph_name].add_vertices(num_added)
-
-        # change total number of agents and print to terminal
-        self.number_agents += num_added
-        print("\tAdded " + str(num_added) + " agents")
+            # if in bounds of hatch thresholds
+            if self.hatch_lower < count < self.hatch_upper:
+                self.mark_to_hatch(index)
 
     @record_time
     def step_image(self, background=(0, 0, 0), origin_bottom=True):
@@ -167,12 +137,10 @@ class GoLSimulation(Simulation):
                 major = int(scale * self.radii[index])
                 minor = int(scale * self.radii[index])
 
-                # if agent state is "true", draw agent
-                if self.states[index]:
-                    # draw the agent and a black outline to distinguish overlapping agents
-                    color = (255, 255, 255)
-                    image = cv2.ellipse(image, (x, y), (major, minor), 0, 0, 360, color, -1)
-                    image = cv2.ellipse(image, (x, y), (major, minor), 0, 0, 360, (0, 0, 0), 1)
+                # draw the agent and a black outline to distinguish overlapping agents
+                color = (255, 255, 255)
+                image = cv2.ellipse(image, (x, y), (major, minor), 0, 0, 360, color, -1)
+                image = cv2.ellipse(image, (x, y), (major, minor), 0, 0, 360, (0, 0, 0), 1)
 
             # if the origin should be bottom-left flip it, otherwise it will be top-left
             if origin_bottom:
@@ -182,3 +150,81 @@ class GoLSimulation(Simulation):
             image_compression = 4  # image compression of png (0: no compression, ..., 9: max compression)
             file_name = f"{self.name}_image_{self.current_step}.png"
             cv2.imwrite(self.images_path + file_name, image, [cv2.IMWRITE_PNG_COMPRESSION, image_compression])
+
+    @record_time
+    def agent_count_csv(self):
+        """ Output the total number of agents as a row in a
+            running CSV file.
+        """
+        # get file name and open the file
+        file_name = f"{self.name}_alive.csv"
+        with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
+            # create CSV object
+            csv_object = csv.writer(file_object)
+
+            # write the row with the corresponding values
+            csv_object.writerow([self.number_agents])
+
+    @classmethod
+    def start(cls, output_dir):
+        """ Configures/runs the model based on the specified
+            simulation mode.
+        """
+        # check that the output directory exists and get the starting parameters for the model
+        output_dir = check_output_dir(output_dir)
+        name, mode, final_step = starting_params()
+
+        # new simulation
+        if mode == 0:
+            # first check that new simulation can be made and create simulation output directory
+            name = check_existing(name, output_dir, new_simulation=True)
+
+            # now make simulation instance, update name, and add paths
+            sim = cls()
+            sim.name = name
+            sim.set_paths(output_dir)
+
+            # copy model files to simulation directory, ignoring __pycache__ files
+            # direc_path = sim.main_path + name + "_copy"
+            # shutil.copytree(os.getcwd(), direc_path, ignore=shutil.ignore_patterns("__pycache__"))
+
+            # set up the simulation, run the steps, and create a video from any images
+            sim.setup()
+            for sim.current_step in range(1, sim.end_step + 1):
+                sim.step()
+            sim.create_video()
+
+        # previous simulation
+        else:
+            # check that previous simulation exists
+            name = check_existing(name, output_dir, new_simulation=False)
+
+            # continuation
+            if mode == 1:
+                # load previous simulation object from pickled file
+                file_name = output_dir + name + os.sep + name + "_temp.pkl"
+                with open(file_name, "rb") as file:
+                    sim = pickle.load(file)
+
+                # update paths for the case the simulation is move to new folder
+                sim.set_paths(output_dir)
+
+                # iterate through all steps and create a video from any images
+                for sim.current_step in range(sim.current_step + 1, final_step + 1):
+                    sim.step()
+                sim.create_video()
+
+            # images to video
+            elif mode == 2:
+                # make object for video/path information and create video
+                sim = cls()
+                sim.name = name
+                sim.set_paths(output_dir)
+                sim.create_video()
+
+            # zip simulation output
+            elif mode == 3:
+                # zip a copy of the folder and save it to the output directory
+                print("Compressing \"" + name + "\" simulation...")
+                shutil.make_archive(output_dir + name, "zip", root_dir=output_dir, base_dir=name)
+                print("Done!")
