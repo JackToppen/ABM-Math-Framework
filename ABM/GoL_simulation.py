@@ -27,6 +27,9 @@ class GoLSimulation(Simulation):
         self.hatch_lower = commandline_param("-hl", int)
         self.hatch_upper = commandline_param("-hu", int)
 
+        # The following array holds the population n at each time step
+        self.reg_pop = np.zeros((0, 1), dtype=float)
+
     def setup(self):
         """ Overrides the setup() method from the Simulation class.
         """
@@ -64,6 +67,25 @@ class GoLSimulation(Simulation):
         # save multiple forms of information about the simulation at the current step
         self.step_values()
         self.agent_count_csv()
+
+    def regression(self):
+        """ Performs linear regression on the exp(n) or log(n) vs time, where n
+            is the number of living agents at time step t (held in reg_pop)
+        """
+
+        x_time = np.array(range(0,self.reg_pop.shape[0]))
+
+        # If the number of living cells decreases from step 0 to step 1, test to see
+        # if the linear regression of log(n) vs t yields a coefficient of determination
+        # which is greater than 0.9. Otherwise, the same test is done using exp(n) instead
+        if self.reg_pop[0] > self.reg_pop[1]:
+            y_adjPop = np.log((self.reg_pop))
+        else: 
+            # Note: we decrease the values for exp(n) by the starting population so that
+            # computing the exp(n) is less prone to cause overflow issues
+            y_adjPop = np.exp((self.reg_pop)-self.reg_pop[0])
+
+        # Regression computation will be written below this comment
 
     @record_time
     def update(self):
@@ -153,8 +175,8 @@ class GoLSimulation(Simulation):
 
     @record_time
     def agent_count_csv(self):
-        """ Output the total number of agents as a row in a
-            running CSV file.
+        """ Output the total number of agents as a row in a running CSV file and in the reg_pop
+            array for linear regression at the end of the simulation
         """
         # get file name and open the file
         file_name = f"{self.name}_alive.csv"
@@ -162,8 +184,14 @@ class GoLSimulation(Simulation):
             # create CSV object
             csv_object = csv.writer(file_object)
 
-            # write the row with the corresponding values
-            csv_object.writerow([self.number_agents])
+            # If the number of agents n is not 0, write the row with the corresponding values for
+            # the number of agents n and record this value in the array reg_pop
+
+            if self.number_agents != 0:
+
+                self.reg_pop = np.append(self.reg_pop,[[self.number_agents]])
+                #  Values outputted to CSV
+                csv_object.writerow([self.number_agents])
 
     @classmethod
     def start(cls, output_dir):
@@ -192,6 +220,11 @@ class GoLSimulation(Simulation):
             sim.setup()
             for sim.current_step in range(1, sim.end_step + 1):
                 sim.step()
+
+            # If all of the agents did not die after the first step, performs linear regression
+            if sim.reg_pop.shape[0] > 1:
+                sim.regression()
+            
             sim.create_video()
 
         # previous simulation
