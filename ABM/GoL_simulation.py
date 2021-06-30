@@ -6,6 +6,9 @@ import numpy as np
 from pythonabm import Simulation
 from pythonabm import *
 
+from sklearn import linear_model
+from sklearn.metrics import r2_score
+
 
 class GoLSimulation(Simulation):
     """ This class inherits the Simulation class allowing it to run a
@@ -73,19 +76,59 @@ class GoLSimulation(Simulation):
             is the number of living agents at time step t (held in reg_pop)
         """
 
-        x_time = np.array(range(0,self.reg_pop.shape[0]))
+        x_time = np.array(range(0,self.reg_pop.shape[0])).reshape((-1,1))
+
+        # Placeholder variable for tracking whether the linear regression should be
+        # done on log(n) (reg_type = 0, default) or exp(n) (reg_type = 1)
+
+        reg_type = 0
 
         # If the number of living cells decreases from step 0 to step 1, test to see
         # if the linear regression of log(n) vs t yields a coefficient of determination
         # which is greater than 0.9. Otherwise, the same test is done using exp(n) instead
-        if self.reg_pop[0] > self.reg_pop[1]:
+        if self.reg_pop[0] >= self.reg_pop[1]:
             y_adjPop = np.log((self.reg_pop))
         else: 
             # Note: we decrease the values for exp(n) by the starting population so that
             # computing the exp(n) is less prone to cause overflow issues
             y_adjPop = np.exp((self.reg_pop)-self.reg_pop[0])
+            reg_type = 1
 
-        # Regression computation will be written below this comment
+        # Creates linear regression object from scikit-learn
+        regr = linear_model.LinearRegression()
+
+        # Performs linear regression computation
+        regr.fit(x_time, y_adjPop)
+
+        # Generates the log(n) or exp(n) predicted from the linear regression object
+        y_pred = regr.predict(x_time)
+
+        # Generates the coefficient of determination (R^2) for the linear regression
+        R2 = r2_score(y_adjPop,y_pred)
+
+        # If R^2 is greater than or equal to 0.9, the output file will be named
+        # according to whether log(n) or exp(n) was used
+
+        if R2 >= 0.9:
+            if reg_type == 0:
+                file_name = f"{self.name}_reg-log.csv"
+            else: 
+                file_name = f"{self.name}_reg-exp.csv"
+        # If R^2 is less than 0.9, the output file will be named "other" to indicate
+        # that the linear regression model is not a good fit for the data.
+        else:
+            file_name = f"{self.name}_reg-other.csv"
+
+        with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
+            
+            # create CSV object
+            csv_object = csv.writer(file_object)
+
+            # Record transformation type (i.e. log(n) or exp(n)) and R^2
+            if reg_type == 0:
+                csv_object.writerow(["log",R2])
+            else: 
+                csv_object.writerow(["exp",R2])
 
     @record_time
     def update(self):
@@ -179,7 +222,7 @@ class GoLSimulation(Simulation):
             array for linear regression at the end of the simulation
         """
         # get file name and open the file
-        file_name = f"{self.name}_alive.csv"
+        file_name = f"{self.name}_alive-pop.csv"
         with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
             # create CSV object
             csv_object = csv.writer(file_object)
