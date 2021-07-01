@@ -33,6 +33,10 @@ class GoLSimulation(Simulation):
         # The following array holds the population n at each time step
         self.reg_pop = np.zeros((0, 1), dtype=float)
 
+        # The following variable tracks when the population reaches the last step or its asymptote
+        # (whichever comes first) in the case that the population is decreasing exponentially
+        self.reg_track = self.end_step
+
     def setup(self):
         """ Overrides the setup() method from the Simulation class.
         """
@@ -48,7 +52,7 @@ class GoLSimulation(Simulation):
 
         # record initial values
         self.step_values()
-        self.agent_count_csv()
+        self.agent_count()
 
     def step(self):
         """ Overrides the step() method from the Simulation class.
@@ -69,66 +73,124 @@ class GoLSimulation(Simulation):
 
         # save multiple forms of information about the simulation at the current step
         self.step_values()
-        self.agent_count_csv()
+        self.agent_count()
 
     def regression(self):
         """ Performs linear regression on the exp(n) or log(n) vs time, where n
             is the number of living agents at time step t (held in reg_pop)
         """
 
-        x_time = np.array(range(0,self.reg_pop.shape[0])).reshape((-1,1))
+        # Threshold for linear regression
+        reg_thresh = 0.9
 
-        # Placeholder variable for tracking whether the linear regression should be
-        # done on log(n) (reg_type = 0, default) or exp(n) (reg_type = 1)
+        # If the number of living cells increases from step 0 to step 1, we will compute 
+        # linear regression using exp(n). Otherwise, we will use log(n) instead
 
-        reg_type = 0
-
-        # If the number of living cells decreases from step 0 to step 1, test to see
-        # if the linear regression of log(n) vs t yields a coefficient of determination
-        # which is greater than 0.9. Otherwise, the same test is done using exp(n) instead
-        if self.reg_pop[0] >= self.reg_pop[1]:
-            y_adjPop = np.log((self.reg_pop))
-        else: 
+        if self.reg_pop[0] < self.reg_pop[1]:
             # Note: we decrease the values for exp(n) by the starting population so that
             # computing the exp(n) is less prone to cause overflow issues
-            y_adjPop = np.exp((self.reg_pop)-self.reg_pop[0])
-            reg_type = 1
+            y_adjPop = np.exp((self.reg_pop) - self.reg_pop[0])
 
-        # Creates linear regression object from scikit-learn
-        regr = linear_model.LinearRegression()
+            x_time = np.array(range(0,self.reg_pop.shape[0])).reshape((-1,1))
 
-        # Performs linear regression computation
-        regr.fit(x_time, y_adjPop)
+            # Creates linear regression object from scikit-learn
+            regr = linear_model.LinearRegression()
 
-        # Generates the log(n) or exp(n) predicted from the linear regression object
-        y_pred = regr.predict(x_time)
+            # Performs linear regression computation
+            regr.fit(x_time, y_adjPop)
 
-        # Generates the coefficient of determination (R^2) for the linear regression
-        R2 = r2_score(y_adjPop,y_pred)
+            # Generates the exp(n) predicted from the linear regression object
+            y_pred = regr.predict(x_time)
 
-        # If R^2 is greater than or equal to 0.9, the output file will be named
-        # according to whether log(n) or exp(n) was used
+            # Generates the coefficient of determination (R^2) for the linear regression
+            coef = r2_score(y_adjPop,y_pred)
 
-        if R2 >= 0.9:
-            if reg_type == 0:
-                file_name = f"{self.name}_reg-log.csv"
-            else: 
+            # Checks to see if R^2 is above the threshold and names the file accordingly
+            if coef >= reg_thresh:
                 file_name = f"{self.name}_reg-exp.csv"
-        # If R^2 is less than 0.9, the output file will be named "other" to indicate
-        # that the linear regression model is not a good fit for the data.
-        else:
-            file_name = f"{self.name}_reg-other.csv"
+            else:
+                file_name = f"{self.name}_reg-other.csv"
 
-        with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
+            with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
             
-            # create CSV object
-            csv_object = csv.writer(file_object)
+                # create CSV object
+                csv_object = csv.writer(file_object)
+                csv_object.writerow(["exp",R2])  
 
-            # Record transformation type (i.e. log(n) or exp(n)) and R^2
-            if reg_type == 0:
-                csv_object.writerow(["log",R2])
-            else: 
-                csv_object.writerow(["exp",R2])
+        else: 
+            # Note: if the population is exponentially decreasing, we only find log(n)
+            # up until the end step or the step when the population reaches its asymptote
+            # (i.e. reg_track), whichever comes first
+            y_adjPop = np.log((self.reg_pop[0:self.reg_track]))
+
+            # Creates an array of time step values up to reg_track, which is either the end
+            # step for the simulation or step in which an exponentially decreasing population
+            # n reached its asymptote. 
+
+            x_time = np.array(range(0,self.reg_track)).reshape((-1,1))
+
+            # Creates linear regression object from scikit-learn
+            regr1 = linear_model.LinearRegression()
+
+            # Performs linear regression computation
+            regr1.fit(x_time, y_adjPop)
+
+            # Generates the exp(n) or log(n) predicted from the linear regression object
+            y_pred1 = regr1.predict(x_time)
+
+            # Generates the coefficient of determination (R^2) for the linear regression
+            coef1 = r2_score(y_adjPop,y_pred1)
+
+            # If the asymptote is encountered before the last step, a second linear regression
+            # will be performed on the remaining population values to verify that the population
+            # exponentially decreases
+
+            if self.reg_track < self.reg_pop.shape[0]:
+
+                x_rem = np.array(range(self.reg_track,self.reg_pop.shape[0]-1)).reshape((-1,1))
+
+                y_rem = self.reg_pop[self.reg_track:-1]
+                print(y_rem)
+                
+                # Creates linear regression object from scikit-learn
+                regr2 = linear_model.LinearRegression()
+
+                # Performs linear regression computation
+                regr2.fit(x_rem, y_rem)
+
+                # Generates the exp(n) or log(n) predicted from the linear regression object
+                y_pred2 = regr2.predict(x_rem)
+
+                # Generates the coefficient of determination (R^2) for the linear regression
+                coef2 = r2_score(y_rem,y_pred2)
+
+                # Checks to see if both R^2 values are above the threshold and names the file accordingly
+                if coef1 >= reg_thresh and coef2 >= reg_thresh:
+                    file_name = f"{self.name}_reg-log.csv"
+                else:
+                    file_name = f"{self.name}_reg-other.csv"
+
+                with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
+            
+                    # create CSV object
+                    csv_object = csv.writer(file_object)
+                    csv_object.writerow(["log",coef1])
+                    csv_object.writerow(["asymp",coef2])
+
+            # Otherwise, only the original linear regression on log(n) needs to be checked and recorded
+            else:
+
+            # Checks to see if the R^2 is above the threshold and names the file accordingly
+                if coef1 >= reg_thresh:
+                    file_name = f"{self.name}_reg-log.csv"
+                else:
+                    file_name = f"{self.name}_reg-other.csv"
+
+                with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
+            
+                    # create CSV object
+                    csv_object = csv.writer(file_object)
+                    csv_object.writerow(["log",coef1])
 
     @record_time
     def update(self):
@@ -217,24 +279,32 @@ class GoLSimulation(Simulation):
             cv2.imwrite(self.images_path + file_name, image, [cv2.IMWRITE_PNG_COMPRESSION, image_compression])
 
     @record_time
-    def agent_count_csv(self):
+    def agent_count(self):
         """ Output the total number of agents as a row in a running CSV file and in the reg_pop
             array for linear regression at the end of the simulation
         """
+
         # get file name and open the file
         file_name = f"{self.name}_alive-pop.csv"
         with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
             # create CSV object
             csv_object = csv.writer(file_object)
 
-            # If the number of agents n is not 0, write the row with the corresponding values for
-            # the number of agents n and record this value in the array reg_pop
+            #  Values outputted to CSV
+            csv_object.writerow([self.number_agents])
 
-            if self.number_agents != 0:
+        # The following conditional catches the time step at which a population that is exponentially decreasing
+        # reaches is asymptote and records this time step in reg_track
 
-                self.reg_pop = np.append(self.reg_pop,[[self.number_agents]])
-                #  Values outputted to CSV
-                csv_object.writerow([self.number_agents])
+        if (self.reg_pop.shape[0] > 0) and (self.reg_track == self.end_step):
+                
+            if self.number_agents - self.reg_pop[-1] >= 0:
+
+                self.reg_track = self.current_step - 1
+
+        # Values outputted to array reg_pop
+        self.reg_pop = np.append(self.reg_pop,[[self.number_agents]])
+
 
     @classmethod
     def start(cls, output_dir):
@@ -288,6 +358,9 @@ class GoLSimulation(Simulation):
                 # iterate through all steps and create a video from any images
                 for sim.current_step in range(sim.current_step + 1, final_step + 1):
                     sim.step()
+
+                # Computing linear regression should also be added in this mode
+
                 sim.create_video()
 
             # images to video
