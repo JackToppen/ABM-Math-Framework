@@ -82,15 +82,13 @@ class GoLSimulation(Simulation):
         exp_track = False
 
         # We exclude the initial number of agents from our regression computation
-        self.reg_pop = np.delete(self.reg_pop,0)
+        self.reg_pop = np.delete(self.reg_pop, 0)
 
-        # First, we try to transform the data using log(n)
-
-        y_adjPop = np.log(self.reg_pop)
+        # First, we try to transform the data using log(n) and reshape to 2D array for the regression
+        y_adjPop = np.log(self.reg_pop).reshape(-1, 1)
         
-        # Placeholder array for the time steps
-
-        x_time = np.arange(1, len(y_adjPop.shape)+1).reshape((-1,1))
+        # Placeholder array for the time steps, again reshape to 2D
+        x_time = np.arange(1, len(y_adjPop) + 1).reshape(-1, 1)
 
         # Creates linear regression object from scikit-learn
         regr = linear_model.LinearRegression()
@@ -107,13 +105,10 @@ class GoLSimulation(Simulation):
 
         # Checks to see if R^2 is above the threshold and names the file accordingly
         if coef_log >= reg_thresh:
-
             file_name = f"{self.name}_reg_log.csv"
 
         # If R^2 is not above the threshold, we try exp(n)
-
         else:
-
             # We have to check to make sure that the range of values n is not larger than
             # what Python can handle after it is transformed into exp(n)
             if np.ptp(self.reg_pop) >= (np.log(sys.float_info.max) - np.log(sys.float_info.min)):
@@ -128,8 +123,8 @@ class GoLSimulation(Simulation):
             else:
                 # Note: we recenter the median of the values n so that python can handle 
                 # computing exp(n) without causing an overflow
-                # y_adjPop2 = np.exp(self.reg_pop - self.reg_pop[0])
-                y_adjPop2 = np.exp(self.reg_pop - (np.amax(self.reg_pop)+np.amin(self.reg_pop))/2)
+                # y_adjPop2 = np.exp(self.reg_pop - self.reg_pop[0]).reshape(-1, 1)
+                y_adjPop2 = np.exp(self.reg_pop - (np.amax(self.reg_pop)+np.amin(self.reg_pop))/2).reshape(-1, 1)
 
                 # Creates linear regression object from scikit-learn
                 # Note that computing this regression might still cause an overflow error
@@ -147,13 +142,11 @@ class GoLSimulation(Simulation):
                 
                 # Checks to see if R^2 is above the threshold and names the file accordingly
                 if coef_exp >= reg_thresh:
-
                     file_name = f"{self.name}_reg_exp.csv"
 
                 else:
                     # If both transformations fail, we assume that the population follows
                     # some "other" trend
-
                     file_name = f"{self.name}_reg_other.csv"
 
         with open(self.output_path + file_name, "a", newline="") as file_object:
@@ -161,18 +154,18 @@ class GoLSimulation(Simulation):
             # create CSV object
             csv_object = csv.writer(file_object)
             # record population transformation log(n) and its associated R^2
-            csv_object.writerow(["log",coef_log])
+            csv_object.writerow(["log", coef_log])
         
             # If an exp(n) could be computed, we record this value as well
             if coef_log < reg_thresh:
 
                 if not exp_track:
                     # record population transformation exp(n) and its associated R^2
-                    csv_object.writerow(["exp",coef_exp])
+                    csv_object.writerow(["exp", coef_exp])
                 
                 else:
                     # record overflow
-                    csv_object.writerow(["exp","nan"])
+                    csv_object.writerow(["exp", "nan"])
 
     @record_time
     def update(self):
