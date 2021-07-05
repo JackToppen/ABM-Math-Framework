@@ -33,10 +33,6 @@ class GoLSimulation(Simulation):
         # The following array holds the population n at each time step
         self.reg_pop = np.zeros((0, 1), dtype=float)
 
-        # The following variable tracks when the population reaches the last step or its asymptote
-        # (whichever comes first) in the case that the population is decreasing exponentially
-        self.reg_track = self.end_step
-
     def setup(self):
         """ Overrides the setup() method from the Simulation class.
         """
@@ -76,121 +72,107 @@ class GoLSimulation(Simulation):
         self.agent_count()
 
     def regression(self):
-        """ Performs linear regression on the exp(n) or log(n) vs time, where n
+        """ Performs linear regression on the log(n) or exp(n) vs time, where n
             is the number of living agents at time step t (held in reg_pop)
         """
-
         # Threshold for linear regression
         reg_thresh = 0.9
 
-        # If the number of living cells increases from step 0 to step 1, we will compute 
-        # linear regression using exp(n). Otherwise, we will use log(n) instead
+        # Placeholder for tracking whether exp(n) would yield an overflow error
+        exp_track = False
 
-        if self.reg_pop[0] < self.reg_pop[1]:
-            # Note: we decrease the values for exp(n) by the starting population so that
-            # computing the exp(n) is less prone to cause overflow issues
-            y_adjPop = np.exp((self.reg_pop) - self.reg_pop[0])
+        # We exclude the initial number of agents from our regression computation
+        self.reg_pop = np.delete(self.reg_pop,0)
 
-            x_time = np.array(range(0,self.reg_pop.shape[0])).reshape((-1,1))
+        # First, we try to transform the data using log(n)
 
-            # Creates linear regression object from scikit-learn
-            regr = linear_model.LinearRegression()
+        y_adjPop = np.log((self.reg_pop))
+        
+        # Placeholder array for the time steps
 
-            # Performs linear regression computation
-            regr.fit(x_time, y_adjPop)
+        x_time = np.array(range(1,y_adjPop.shape[0]+1)).reshape((-1,1))
 
-            # Generates the exp(n) predicted from the linear regression object
-            y_pred = regr.predict(x_time)
+        # Creates linear regression object from scikit-learn
+        regr = linear_model.LinearRegression()
 
-            # Generates the coefficient of determination (R^2) for the linear regression
-            coef = r2_score(y_adjPop,y_pred)
+        # Performs linear regression computation
+        regr.fit(x_time, y_adjPop)
 
-            # Checks to see if R^2 is above the threshold and names the file accordingly
-            if coef >= reg_thresh:
-                file_name = f"{self.name}_reg-exp.csv"
+        # Generates the exp(n) predicted from the linear regression object
+        y_pred = regr.predict(x_time)
+
+        # Generates the coefficient of determination (R^2) for the linear regression
+        coef_log = r2_score(y_adjPop,y_pred)
+        print("log(n) coefficient: ", coef_log)
+
+        # Checks to see if R^2 is above the threshold and names the file accordingly
+        if coef_log >= reg_thresh:
+
+            file_name = f"{self.name}_reg_log.csv"
+
+        # If R^2 is not above the threshold, we try exp(n)
+
+        else:
+
+            # We have to check to make sure that the range of values n is not larger than
+            # what Python can handle after it is transformed into exp(n)
+            if np.ptp(self.reg_pop) >= (np.log(sys.float_info.max) - np.log(sys.float_info.min)):
+
+                # If it is, attempting to compute exp(n) will yield an overflow error. In
+                # this case, we simply output the regression from log(n) in a CSV indicating
+                # that the regression on exp(n) could not be computed.
+                exp_track = True
+                # The name of the file indicates that an overflow occurred
+                file_name = f"{self.name}_reg_overflow.csv"
+
             else:
-                file_name = f"{self.name}_reg-other.csv"
+                # Note: we recenter the median of the values n so that python can handle 
+                # computing exp(n) without causing an overflow
+                # y_adjPop2 = np.exp(self.reg_pop - self.reg_pop[0])
+                y_adjPop2 = np.exp(self.reg_pop - (np.amax(self.reg_pop)+np.amin(self.reg_pop))/2)
 
-            with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
-            
-                # create CSV object
-                csv_object = csv.writer(file_object)
-                csv_object.writerow(["exp",R2])  
-
-        else: 
-            # Note: if the population is exponentially decreasing, we only find log(n)
-            # up until the end step or the step when the population reaches its asymptote
-            # (i.e. reg_track), whichever comes first
-            y_adjPop = np.log((self.reg_pop[0:self.reg_track]))
-
-            # Creates an array of time step values up to reg_track, which is either the end
-            # step for the simulation or step in which an exponentially decreasing population
-            # n reached its asymptote. 
-
-            x_time = np.array(range(0,self.reg_track)).reshape((-1,1))
-
-            # Creates linear regression object from scikit-learn
-            regr1 = linear_model.LinearRegression()
-
-            # Performs linear regression computation
-            regr1.fit(x_time, y_adjPop)
-
-            # Generates the exp(n) or log(n) predicted from the linear regression object
-            y_pred1 = regr1.predict(x_time)
-
-            # Generates the coefficient of determination (R^2) for the linear regression
-            coef1 = r2_score(y_adjPop,y_pred1)
-
-            # If the asymptote is encountered before the last step, a second linear regression
-            # will be performed on the remaining population values to verify that the population
-            # exponentially decreases
-
-            if self.reg_track < self.reg_pop.shape[0]:
-
-                x_rem = np.array(range(self.reg_track,self.reg_pop.shape[0]-1)).reshape((-1,1))
-
-                y_rem = self.reg_pop[self.reg_track:-1]
-                print(y_rem)
-                
                 # Creates linear regression object from scikit-learn
+                # Note that computing this regression might still cause an overflow error
                 regr2 = linear_model.LinearRegression()
 
                 # Performs linear regression computation
-                regr2.fit(x_rem, y_rem)
+                regr2.fit(x_time, y_adjPop2)
 
-                # Generates the exp(n) or log(n) predicted from the linear regression object
-                y_pred2 = regr2.predict(x_rem)
+                # Generates the exp(n) predicted from the linear regression object
+                y_pred2 = regr2.predict(x_time)
 
                 # Generates the coefficient of determination (R^2) for the linear regression
-                coef2 = r2_score(y_rem,y_pred2)
+                coef_exp = r2_score(y_adjPop2,y_pred2)
+                print("exp(n) coefficient: ", coef_exp)
+                
+                # Checks to see if R^2 is above the threshold and names the file accordingly
+                if coef_exp >= reg_thresh:
 
-                # Checks to see if both R^2 values are above the threshold and names the file accordingly
-                if coef1 >= reg_thresh and coef2 >= reg_thresh:
-                    file_name = f"{self.name}_reg-log.csv"
+                    file_name = f"{self.name}_reg_exp.csv"
+
                 else:
-                    file_name = f"{self.name}_reg-other.csv"
+                    # If both transformations fail, we assume that the population follows
+                    # some "other" trend
 
-                with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
+                    file_name = f"{self.name}_reg_other.csv"
+
+        with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
             
-                    # create CSV object
-                    csv_object = csv.writer(file_object)
-                    csv_object.writerow(["log",coef1])
-                    csv_object.writerow(["asymp",coef2])
+            # create CSV object
+            csv_object = csv.writer(file_object)
+            # record population transformation log(n) and its associated R^2
+            csv_object.writerow(["log",coef_log])
+        
+            # If an exp(n) could be computed, we record this value as well
+            if coef_log < reg_thresh:
 
-            # Otherwise, only the original linear regression on log(n) needs to be checked and recorded
-            else:
-
-            # Checks to see if the R^2 is above the threshold and names the file accordingly
-                if coef1 >= reg_thresh:
-                    file_name = f"{self.name}_reg-log.csv"
+                if not exp_track:
+                    # record population transformation exp(n) and its associated R^2
+                    csv_object.writerow(["exp",coef_exp])
+                
                 else:
-                    file_name = f"{self.name}_reg-other.csv"
-
-                with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
-            
-                    # create CSV object
-                    csv_object = csv.writer(file_object)
-                    csv_object.writerow(["log",coef1])
+                    # record overflow
+                    csv_object.writerow(["exp","nan"])
 
     @record_time
     def update(self):
@@ -293,18 +275,13 @@ class GoLSimulation(Simulation):
             #  Values outputted to CSV
             csv_object.writerow([self.number_agents])
 
-        # The following conditional catches the time step at which a population that is exponentially decreasing
-        # reaches is asymptote and records this time step in reg_track
+        # The following conditional catches the case that the population decreases to 0 and stops updating
+        # the population array reg_pop accordingly.
 
-        if (self.reg_pop.shape[0] > 0) and (self.reg_track == self.end_step):
-                
-            if self.number_agents - self.reg_pop[-1] >= 0:
+        if self.number_agents != 0:
 
-                self.reg_track = self.current_step - 1
-
-        # Values outputted to array reg_pop
-        self.reg_pop = np.append(self.reg_pop,[[self.number_agents]])
-
+            # Values outputted to array reg_pop
+            self.reg_pop = np.append(self.reg_pop,[[self.number_agents]])
 
     @classmethod
     def start(cls, output_dir):
