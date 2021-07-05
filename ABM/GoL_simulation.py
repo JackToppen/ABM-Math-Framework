@@ -31,7 +31,7 @@ class GoLSimulation(Simulation):
         self.hatch_upper = commandline_param("-hu", int)
 
         # The following array holds the population n at each time step
-        self.reg_pop = np.zeros((0, 1), dtype=float)
+        self.reg_pop = np.zeros(0, dtype=int)
 
     def setup(self):
         """ Overrides the setup() method from the Simulation class.
@@ -86,11 +86,11 @@ class GoLSimulation(Simulation):
 
         # First, we try to transform the data using log(n)
 
-        y_adjPop = np.log((self.reg_pop))
+        y_adjPop = np.log(self.reg_pop)
         
         # Placeholder array for the time steps
 
-        x_time = np.array(range(1,y_adjPop.shape[0]+1)).reshape((-1,1))
+        x_time = np.arange(1, len(y_adjPop.shape)+1).reshape((-1,1))
 
         # Creates linear regression object from scikit-learn
         regr = linear_model.LinearRegression()
@@ -156,7 +156,7 @@ class GoLSimulation(Simulation):
 
                     file_name = f"{self.name}_reg_other.csv"
 
-        with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
+        with open(self.output_path + file_name, "a", newline="") as file_object:
             
             # create CSV object
             csv_object = csv.writer(file_object)
@@ -268,7 +268,7 @@ class GoLSimulation(Simulation):
 
         # get file name and open the file
         file_name = f"{self.name}_alive-pop.csv"
-        with open(self.main_path[:-(len(self.name)) - 1] + file_name, "a", newline="") as file_object:
+        with open(self.output_path + file_name, "a", newline="") as file_object:
             # create CSV object
             csv_object = csv.writer(file_object)
 
@@ -281,7 +281,7 @@ class GoLSimulation(Simulation):
         if self.number_agents != 0:
 
             # Values outputted to array reg_pop
-            self.reg_pop = np.append(self.reg_pop,[[self.number_agents]])
+            self.reg_pop = np.append(self.reg_pop,self.number_agents)
 
     @classmethod
     def start(cls, output_dir):
