@@ -53,9 +53,6 @@ class GoLSimulation(Simulation):
     def step(self):
         """ Overrides the step() method from the Simulation class.
         """
-        # records step run time and prints the current step and number of agents
-        self.info()
-
         # get all neighbors within radius of 2
         self.get_neighbors("neighbor_graph", self.search_radius)
 
@@ -70,6 +67,19 @@ class GoLSimulation(Simulation):
         # save multiple forms of information about the simulation at the current step
         self.step_values()
         self.agent_count()
+        # self.step_image()
+        # self.temp()
+        # self.data()
+
+    def end(self):
+        """ Overrides the default end method in the Simulation class.
+        """
+        # make a video from all of the step images
+        # self.create_video()
+
+        # if all of the agents did not die after the first step, performs linear regression
+        if self.reg_pop.shape[0] > 1:
+            self.regression()
 
     def regression(self):
         """ Performs linear regression on the log(n) or exp(n) vs time, where n
@@ -270,80 +280,21 @@ class GoLSimulation(Simulation):
 
         # The following conditional catches the case that the population decreases to 0 and stops updating
         # the population array reg_pop accordingly.
-
         if self.number_agents != 0:
 
             # Values outputted to array reg_pop
-            self.reg_pop = np.append(self.reg_pop,self.number_agents)
+            self.reg_pop = np.append(self.reg_pop, self.number_agents)
 
     @classmethod
-    def start(cls, output_dir):
-        """ Configures/runs the model based on the specified
-            simulation mode.
+    def simulation_mode_0(cls, name, output_dir):
+        """ Override the default mode 0 method from the simulation
+            class.
         """
-        # check that the output directory exists and get the starting parameters for the model
-        output_dir = check_output_dir(output_dir)
-        name, mode, final_step = starting_params()
+        # make simulation instance, update name, and add paths
+        sim = cls()
+        sim.name = name
+        sim.set_paths(output_dir)
 
-        # new simulation
-        if mode == 0:
-            # first check that new simulation can be made and create simulation output directory
-            name = check_existing(name, output_dir, new_simulation=True)
-
-            # now make simulation instance, update name, and add paths
-            sim = cls()
-            sim.name = name
-            sim.set_paths(output_dir)
-
-            # copy model files to simulation directory, ignoring __pycache__ files
-            # direc_path = sim.main_path + name + "_copy"
-            # shutil.copytree(os.getcwd(), direc_path, ignore=shutil.ignore_patterns("__pycache__"))
-
-            # set up the simulation, run the steps, and create a video from any images
-            sim.setup()
-            for sim.current_step in range(1, sim.end_step + 1):
-                sim.step()
-
-            # If all of the agents did not die after the first step, performs linear regression
-            if sim.reg_pop.shape[0] > 1:
-                sim.regression()
-            
-            sim.create_video()
-
-        # previous simulation
-        else:
-            # check that previous simulation exists
-            name = check_existing(name, output_dir, new_simulation=False)
-
-            # continuation
-            if mode == 1:
-                # load previous simulation object from pickled file
-                file_name = output_dir + name + os.sep + name + "_temp.pkl"
-                with open(file_name, "rb") as file:
-                    sim = pickle.load(file)
-
-                # update paths for the case the simulation is move to new folder
-                sim.set_paths(output_dir)
-
-                # iterate through all steps and create a video from any images
-                for sim.current_step in range(sim.current_step + 1, final_step + 1):
-                    sim.step()
-
-                # Computing linear regression should also be added in this mode
-
-                sim.create_video()
-
-            # images to video
-            elif mode == 2:
-                # make object for video/path information and create video
-                sim = cls()
-                sim.name = name
-                sim.set_paths(output_dir)
-                sim.create_video()
-
-            # zip simulation output
-            elif mode == 3:
-                # zip a copy of the folder and save it to the output directory
-                print("Compressing \"" + name + "\" simulation...")
-                shutil.make_archive(output_dir + name, "zip", root_dir=output_dir, base_dir=name)
-                print("Done!")
+        # set up the simulation agents and run the simulation
+        sim.setup()
+        sim.run_simulation()
