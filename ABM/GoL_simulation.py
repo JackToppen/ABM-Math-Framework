@@ -81,6 +81,101 @@ class GoLSimulation(Simulation):
         if self.reg_pop.shape[0] > 1:
             self.regression()
 
+    @record_time
+    def update(self):
+        """ Updates an agent based on the presence of neighbors.
+        """
+        # determine which agents are being removed
+        for index in range(self.number_agents):
+            # get number of neighbors
+            count = self.neighbor_graph.num_neighbors(index)
+
+            # if meeting the conditions, remove the agent
+            if count < self.kill_below or count > self.kill_above:
+                self.mark_to_remove(index)
+
+    @record_time
+    def move(self):
+        """ Assigns new location to agent.
+        """
+        for index in range(self.number_agents):
+            # get new location position
+            new_location = self.locations[index] + self.move_value * self.random_vector()
+
+            # check that the new location is within the space, otherwise use boundary values
+            for i in range(3):
+                if new_location[i] > self.size[i]:
+                    self.locations[index][i] = self.size[i]
+                elif new_location[i] < 0:
+                    self.locations[index][i] = 0
+                else:
+                    self.locations[index][i] = new_location[i]
+
+    @record_time
+    def reproduce(self):
+        """ If the agent meets criteria, hatch a new agent.
+        """
+        # determine which agents are hatching
+        for index in range(self.number_agents):
+            # get number of neighbors
+            count = self.neighbor_graph.num_neighbors(index)
+
+            # if in bounds of hatch thresholds
+            if self.hatch_lower < count < self.hatch_upper:
+                self.mark_to_hatch(index)
+
+    @record_time
+    def update_populations(self):
+        """ Overrides default update_populations method from
+            Simulation class.
+        """
+        # get indices of hatching/dying agents with Boolean mask
+        add_indices = np.arange(self.number_agents)[self.hatching]
+        remove_indices = np.arange(self.number_agents)[self.removing]
+
+        # count how many added/removed agents
+        num_added = len(add_indices)
+        num_removed = len(remove_indices)
+
+        # go through each agent array name
+        for name in self.agent_array_names:
+            # copy the indices of the agent array data for the hatching agents
+            copies = self.__dict__[name][add_indices]
+
+            # hatch the new agents in radius 1 from reproducing agent
+            if name == "locations":
+                for index in range(len(copies)):
+                    # get new location position
+                    new_location = copies[index] + 1 * self.random_vector()
+
+                    # check that the new location is within the space, otherwise use boundary values
+                    for i in range(3):
+                        if new_location[i] > self.size[i]:
+                            copies[index][i] = self.size[i]
+                        elif new_location[i] < 0:
+                            copies[index][i] = 0
+                        else:
+                            copies[index][i] = new_location[i]
+
+            # add/remove agent data to/from the arrays
+            self.__dict__[name] = np.concatenate((self.__dict__[name], copies), axis=0)
+            self.__dict__[name] = np.delete(self.__dict__[name], remove_indices, axis=0)
+
+        # go through each graph name
+        for graph_name in self.graph_names:
+            # add/remove vertices from the graph
+            self.__dict__[graph_name].add_vertices(num_added)
+            self.__dict__[graph_name].delete_vertices(remove_indices)
+
+        # change total number of agents and print info to terminal
+        self.number_agents += num_added - num_removed
+        print("\tAdded " + str(num_added) + " agents")
+        print("\tRemoved " + str(num_removed) + " agents")
+
+        # clear the hatching/removing arrays for the next step
+        self.hatching[:] = False
+        self.removing[:] = False
+
     def regression(self):
         """ Performs linear regression on the log(n) or exp(n) vs time, where n
             is the number of living agents at time step t (held in reg_pop)
@@ -176,49 +271,6 @@ class GoLSimulation(Simulation):
                 else:
                     # record overflow
                     csv_object.writerow(["exp", "nan"])
-
-    @record_time
-    def update(self):
-        """ Updates an agent based on the presence of neighbors.
-        """
-        # determine which agents are being removed
-        for index in range(self.number_agents):
-            # get number of neighbors
-            count = self.neighbor_graph.num_neighbors(index)
-
-            # if meeting the conditions, remove the agent
-            if count < self.kill_below or count > self.kill_above:
-                self.mark_to_remove(index)
-
-    @record_time
-    def move(self):
-        """ Assigns new location to agent.
-        """
-        for index in range(self.number_agents):
-            # get new location position
-            new_location = self.locations[index] + self.move_value * self.random_vector()
-
-            # check that the new location is within the space, otherwise use boundary values
-            for i in range(3):
-                if new_location[i] > self.size[i]:
-                    self.locations[index][i] = self.size[i]
-                elif new_location[i] < 0:
-                    self.locations[index][i] = 0
-                else:
-                    self.locations[index][i] = new_location[i]
-
-    @record_time
-    def reproduce(self):
-        """ If the agent meets criteria, hatch a new agent.
-        """
-        # determine which agents are hatching
-        for index in range(self.number_agents):
-            # get number of neighbors
-            count = self.neighbor_graph.num_neighbors(index)
-
-            # if in bounds of hatch thresholds
-            if self.hatch_lower < count < self.hatch_upper:
-                self.mark_to_hatch(index)
 
     @record_time
     def step_image(self, background=(0, 0, 0), origin_bottom=True):
