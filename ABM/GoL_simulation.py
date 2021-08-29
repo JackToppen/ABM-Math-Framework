@@ -38,13 +38,13 @@ class GoLSimulation(Simulation):
         self.add_agents(self.num_to_start)
 
         # create the following agent arrays with initial conditions.
-        self.add_agent_values("locations", "radii", "colors")
+        self.indicate_arrays("locations", "radii", "colors")
         self.locations = np.random.rand(self.number_agents, 3) * self.size
         self.radii = self.agent_array(initial=lambda: 0.5)
         self.colors = np.full((self.number_agents, 3), np.array([255, 255, 255]), dtype=int)
 
         # create graph for holding agent neighbors
-        self.add_agent_graphs("neighbor_graph")
+        self.indicate_graphs("neighbor_graph")
         self.neighbor_graph = self.agent_graph()
 
         # record initial values
@@ -68,7 +68,7 @@ class GoLSimulation(Simulation):
         # save multiple forms of information about the simulation at the current step
         self.step_values(arrays=["locations"])
         self.agent_count()
-        self.step_image()
+        # self.step_image()
         # self.temp()
         # self.data()
 
