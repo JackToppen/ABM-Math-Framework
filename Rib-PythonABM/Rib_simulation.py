@@ -17,6 +17,7 @@ class RibSimulation(Simulation):
         # read parameters from YAML file and add them to instance variables
         self.yaml_parameters("templates\\general.yaml")
 
+        # simulation parameters
         self.prolifratemult = 0
         self.pRed1 = 0
         self.shhC = 0
@@ -24,13 +25,14 @@ class RibSimulation(Simulation):
         self.celldeathmult = 0
         self.localfate = 0
 
-        self.patches_shhC = np.zeros((17, 68))
-        self.patches_intens = np.zeros((17, 68))
-        self.patches_pressure = np.zeros((17, 68))
-        self.patches_vx = np.zeros((17, 68))
-        self.patches_vy = np.zeros((17, 68))
-        self.patches_redness = np.zeros((17, 68))
-        self.patches_blueness = np.zeros((17, 68))
+        # patch values
+        self.shhC = np.zeros((17, 68))
+        self.intens = np.zeros((17, 68))
+        self.pressure = np.zeros((17, 68))
+        self.vx = np.zeros((17, 68))
+        self.vy = np.zeros((17, 68))
+        self.redness = np.zeros((17, 68))
+        self.blueness = np.zeros((17, 68))
 
     def setup(self):
         """ Overrides the setup() method from the Simulation class.
@@ -38,16 +40,14 @@ class RibSimulation(Simulation):
         # add agents to the simulation
         self.add_agents(self.num_to_start)
 
-        # create the following agent arrays with initial conditions.
+        # specify arrays
         self.indicate_arrays("locations", "radii", "colors", "states")
+
+        # create the following agent arrays with initial conditions.
         self.locations = np.random.rand(self.number_agents, 3) * self.size
         self.radii = self.agent_array(initial=lambda: 0.5)
         self.colors = np.full((self.number_agents, 3), np.array([255, 255, 255]), dtype=int)
         self.states = self.agent_array(initial=lambda: 0)    # 0: yellow, 1: red, 2: blue
-
-        # create graph for holding agent neighbors
-        self.indicate_graphs("neighbor_graph")
-        self.neighbor_graph = self.agent_graph()
 
         # record initial values
         self.step_values(arrays=["locations"])
@@ -55,9 +55,6 @@ class RibSimulation(Simulation):
     def step(self):
         """ Overrides the step() method from the Simulation class.
         """
-        # get all neighbors within radius of 2
-        self.get_neighbors(self.neighbor_graph, 5)
-
         # call the following methods that update agent values
         self.decide_cells()
 
@@ -76,16 +73,20 @@ class RibSimulation(Simulation):
         # make a video from all of the step images
         self.create_video()
 
+    def get_patch_location(self, index):
+        return int(self.locations[index][1] + 0.5), int(self.locations[index][0] + 0.5)
+
     @record_time
     def decide_cells(self):
         for index in range(self.number_agents):
+            i, j = self.get_patch_location(index)
             # see if state is yellow
             if self.states[index] == 0:
                 if r.random() < self.prolifratemult * 0.05:
-                    if r.random() < self.pRed1 * self.shhC:
+                    if r.random() < self.pRed1 * self.shhC[i][j]:
                         self.states[index] = 1
                     else:
-                        if r.random() < self.pBlue1 * (1 - self.shhC):
+                        if r.random() < self.pBlue1 * (1 - self.shhC[i][j]):
                             self.states[index] = 2
                     self.mark_to_hatch(index)
             else:
@@ -94,17 +95,19 @@ class RibSimulation(Simulation):
             if r.random() < 0.05 * self.celldeathmult * math.e ** ((self.current_step / self.end_step) ** 2):
                 self.mark_to_remove(index)
             if self.localfate:
-                if self.states[index] == 1 and (self.blueness / (self.blueness + self.redness) > 0.6):
+
+                if self.states[index] == 1 and (self.blueness[i][j] / (self.blueness[i][j] + self.redness[i][j]) > 0.6):
                     self.states = 2
                     self.mark_to_hatch(index)
-                if self.states[index] == 2 and (self.blueness / (self.blueness + self.redness) > 0.6):
+                if self.states[index] == 2 and (self.redness[i][j] / (self.blueness[i][j] + self.redness[i][j]) > 0.6):
                     self.states = 2
                     self.mark_to_hatch(index)
 
     @record_time
     def move_cells(self):
         for index in range(self.number_agents):
-            if self.pressure > 4:
+            i, j = self.get_patch_location(index)
+            if self.pressure[i][j] > 4:
                 vec = np.array([0.1 - self.vx, -self.vy, 0])
                 norm = normal_vector(vec)
                 self.locations[index] += norm * (0.5 * r.random() + 0.5) * math.sqrt(self.vx ** 2 + self.vy ** 2)
@@ -113,27 +116,81 @@ class RibSimulation(Simulation):
 
     @record_time
     def update_fields(self):
-        self.patches_redness[:] = 3
-        self.patches_blueness[:] = 3
+        self.pressure[:] = 0
+        self.redness[:] = 3
+        self.blueness[:] = 3
 
         for index in range(self.number_agents):
             # pressure
-            x = int(self.locations[index][0])
-            y = int(self.locations[index][1])
-            self.patches_pressure[y][x] += 1
+            i, j = self.get_patch_location(index)
+            self.pressure[i][j] += 1
 
             # redness
             if self.states[index] == 1:
-                self.patches_redness[y][x] += 1
+                self.redness[i][j] += 1
             elif self.states[index] == 2:
-                self.patches_blueness[y][x] += 1
+                self.blueness[i][j] += 1
 
             # diffuse pressure 0.5 ten times
+            for _ in range(10):
+                temp = np.zeros((70, 19))
+                temp[1:-1, 1:-1] = self.pressure
+                add = 0.5 * self.pressure / 8
+                temp *= 0.5
+                temp[0:-2, 0:-2] += add
+                temp[2:, 2:] += add
+                temp[0:-2, 2:] += add
+                temp[2:, 0:-2] += add
+                temp[0:-2, 1:-1] += add
+                temp[2:, 1:-1] += add
+                temp[1:-1, 2:] += add
+                temp[1:-1, 0:-2] += add
+                self.pressure = temp[1:-1, 1:-1]
+
             # diffuse redness 0.2 twice
+            for _ in range(2):
+                temp = np.zeros((70, 19))
+                temp[1:-1, 1:-1] = self.redness
+                add = 0.5 * self.redness / 8
+                temp *= 0.5
+                temp[0:-2, 0:-2] += add
+                temp[2:, 2:] += add
+                temp[0:-2, 2:] += add
+                temp[2:, 0:-2] += add
+                temp[0:-2, 1:-1] += add
+                temp[2:, 1:-1] += add
+                temp[1:-1, 2:] += add
+                temp[1:-1, 0:-2] += add
+                self.redness = temp[1:-1, 1:-1]
+
             # diffuse blueness 0.2 twice
+            for _ in range(10):
+                temp = np.zeros((70, 19))
+                temp[1:-1, 1:-1] = self.blueness
+                add = 0.5 * self.blueness / 8
+                temp *= 0.5
+                temp[0:-2, 0:-2] += add
+                temp[2:, 2:] += add
+                temp[0:-2, 2:] += add
+                temp[2:, 0:-2] += add
+                temp[0:-2, 1:-1] += add
+                temp[2:, 1:-1] += add
+                temp[1:-1, 2:] += add
+                temp[1:-1, 0:-2] += add
+                self.blueness = temp[1:-1, 1:-1]
 
             # calculate differential
+            for i in range(17):
+                for j in range(68):
+                    if j < 0 or j == 67:
+                        self.vx[j][i] = 0
+                    else:
+                        self.vx[j][i] = (self.pressure[j+1][i] - self.pressure[j-1][i]) / 2
 
+                    if i == 0 or i == 16:
+                        self.vy[j][i] = 0
+                    else:
+                        self.vy[j][i] = (self.pressure[j][i+1] - self.pressure[j][i-1]) / 2
 
     @record_time
     def update_populations(self):
