@@ -8,6 +8,7 @@ from sklearn import linear_model
 from sklearn.metrics import r2_score
 
 
+
 class GoLSimulation(Simulation):
     """ This class inherits the Simulation class allowing it to run a
         simulation with the proper functionality.
