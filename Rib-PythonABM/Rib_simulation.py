@@ -1,8 +1,47 @@
 import random as r
 import numpy as np
 import math
+import cv2
+from numba import njit, stencil
 
-from pythonabm import Simulation, record_time, normal_vector
+from pythonabm import Simulation, record_time, normal_vector, check_direct
+
+
+@stencil
+def laplacian(c):
+    return 0.125 * (c[0,1] + c[1,0] + c[0,-1] + c[-1,0] + c[1,1] + c[1,-1] + c[-1,1] + c[-1,-1])
+
+
+@njit
+def diffuse_numba(pressure, redness, blueness):
+    for _ in range(10):
+        # mirror first and last rows
+        pressure[0] = pressure[1]
+        pressure[-1] = pressure[-2]
+
+        # mirror first and last columns
+        pressure[:, 0] = pressure[:, 1]
+        pressure[:, -1] = pressure[:, -2]
+        pressure += 0.5 * laplacian(pressure) - 0.5 * pressure
+        
+    for _ in range(2):
+        redness += 0.2 * laplacian(redness)
+        blueness += 0.2 * laplacian(blueness)
+
+    return pressure, redness, blueness
+
+
+def diffuse(pressure, redness, blueness):
+    # pad array edges with zeros
+    pressure_pad = np.pad(pressure, 1)
+    redness_pad = np.pad(redness, 1)
+    blueness_pad = np.pad(blueness, 1)
+
+    # perform integration calculation
+    p_out, r_out, b_out = diffuse_numba(pressure_pad, redness_pad, blueness_pad)
+
+    # return array without edges
+    return p_out[1:-1, 1:-1], r_out[1:-1, 1:-1], b_out[1:-1, 1:-1]
 
 
 class RibSimulation(Simulation):
@@ -15,16 +54,19 @@ class RibSimulation(Simulation):
         Simulation.__init__(self)
 
         # read parameters from YAML file and add them to instance variables
-        self.yaml_parameters("templates\\general.yaml")
+        self.yaml_parameters("templates/general.yaml")
 
         # simulation parameters
-        self.prolifratemult = 0
-        self.pRed1 = 0
-        self.shhC = 0
-        self.pBlue1 = 0
-        self.celldeathmult = 0
-        self.localfate = 0
-
+        self.init_size_mult = 0.55
+        self.shh_xport = 12.0
+        self.shh_intensity_log = 0.63
+        self.pRed1 = 0.4
+        self.pBlue1 = 0.4
+        self.celldeathmult = 0.00
+        self.prolifratemult = 1.0
+        self.cdduration = 30
+        self.localfate = True
+       
         # patch values
         self.shhC = np.zeros((17, 68))
         self.intens = np.zeros((17, 68))
@@ -34,29 +76,50 @@ class RibSimulation(Simulation):
         self.redness = np.zeros((17, 68))
         self.blueness = np.zeros((17, 68))
 
+        self.video_quality = 2010
+
     def setup(self):
-        """ Overrides the setup() method from the Simulation class.
+        """ Matches the "setup" method from the NetLogo Rib-ABM
         """
         # add agents to the simulation
-        self.add_agents(self.num_to_start)
+        num_to_start = int(self.init_size_mult * 1200)
+        self.add_agents(num_to_start)
 
         # specify arrays
         self.indicate_arrays("locations", "radii", "colors", "states")
 
         # create the following agent arrays with initial conditions.
-        self.locations = np.random.rand(self.number_agents, 3) * self.size
-        self.radii = self.agent_array(initial=lambda: 0.5)
-        self.colors = np.full((self.number_agents, 3), np.array([255, 255, 255]), dtype=int)
-        self.states = self.agent_array(initial=lambda: 0)    # 0: yellow, 1: red, 2: blue
+        self.locations = np.random.rand(num_to_start, 3)
+        self.radii = self.agent_array(initial=lambda: 0.25)
+        self.states = self.agent_array(initial=lambda: 0)
+        
+        # set shh-intensity
+        shh_intensity = math.e ** self.shh_intensity_log
+        for i in range(68):
+            self.shhC[:, i] = shh_intensity * math.e ** (-1 * (((i + 8) / self.shh_xport) ** 2)) / math.e ** (-1 * (10 / self.shh_xport) ** 2)
+        self.intens = 255 * (1 - self.shhC / shh_intensity)
+
+        # adjust locations based on dimensions of space
+        self.locations[:, 0] = 14 * math.sqrt(self.init_size_mult) * self.locations[:, 0] + 2
+        self.locations[:, 1] = math.sqrt(self.init_size_mult) * (14 * self.locations[:, 1] - 7) + 8
 
         # record initial values
-        self.step_values(arrays=["locations"])
+        self.step_values()
+        self.step_image()
 
     def step(self):
-        """ Overrides the step() method from the Simulation class.
+        """ Matches the "go" method from the NetLogo Rib-ABM
         """
-        # call the following methods that update agent values
+        # call the following methods that update cell and field values
         self.decide_cells()
+        self.update_fields()
+
+        # incrementally move cells and update fields
+        countsteps = 0
+        while np.amax(self.pressure) > 6 and countsteps < 100:
+            self.move_cells()
+            self.update_fields()
+            countsteps += 1
 
         # add/remove agents from the simulation
         self.update_populations()
@@ -68,192 +131,162 @@ class RibSimulation(Simulation):
         self.data()
 
     def end(self):
-        """ Overrides the default end method in the Simulation class.
+        """ Make a video from all of the step images
         """
-        # make a video from all of the step images
         self.create_video()
 
     def get_patch_location(self, index):
+        """ Return patch indices based on cell location
+        """
         return int(self.locations[index][1] + 0.5), int(self.locations[index][0] + 0.5)
 
     @record_time
     def decide_cells(self):
+        # loop over all cells
         for index in range(self.number_agents):
+            # get location of patch cell is on
             i, j = self.get_patch_location(index)
-            # see if state is yellow
-            if self.states[index] == 0:
-                if r.random() < self.prolifratemult * 0.05:
+
+            # determine if dividing
+            if r.random() < self.prolifratemult * 0.05:
+                # see if state is yellow
+                if self.states[index] == 0:
+                    # determine new state
                     if r.random() < self.pRed1 * self.shhC[i][j]:
                         self.states[index] = 1
                     else:
                         if r.random() < self.pBlue1 * (1 - self.shhC[i][j]):
                             self.states[index] = 2
-                    self.mark_to_hatch(index)
-            else:
-                if r.random() < self.prolifratemult * 0.05:
-                    self.mark_to_hatch(index)
+
+                # hatch
+                self.mark_to_hatch(index)
+            
+            # determine if dying
             if r.random() < 0.05 * self.celldeathmult * math.e ** ((self.current_step / self.end_step) ** 2):
                 self.mark_to_remove(index)
-            if self.localfate:
 
+            # if local fate is turned on, potentially change fates
+            if self.localfate and (self.blueness[i][j] + self.redness[i][j]) != 0:
                 if self.states[index] == 1 and (self.blueness[i][j] / (self.blueness[i][j] + self.redness[i][j]) > 0.6):
-                    self.states = 2
-                    self.mark_to_hatch(index)
+                    self.states[index] = 2
+
                 if self.states[index] == 2 and (self.redness[i][j] / (self.blueness[i][j] + self.redness[i][j]) > 0.6):
-                    self.states = 2
-                    self.mark_to_hatch(index)
+                    self.states[index] = 1
 
     @record_time
     def move_cells(self):
+        """ Matches the "move-cells" method from the NetLogo Rib-ABM
+        """
+        # loop over all cells
         for index in range(self.number_agents):
+            # get current patch location
             i, j = self.get_patch_location(index)
-            if self.pressure[i][j] > 4:
-                vec = np.array([0.1 - self.vx, -self.vy, 0])
-                norm = normal_vector(vec)
-                self.locations[index] += norm * (0.5 * r.random() + 0.5) * math.sqrt(self.vx ** 2 + self.vy ** 2)
 
-            # jiggle cells (do later)
+            # if patch pressure is greater than 4, move in random direction
+            if self.pressure[i][j] > 4:
+                vec = np.array([-self.vy[i][j], 0.1-self.vx[i][j], 0])
+                norm = normal_vector(vec)
+                self.locations[index] += norm * (0.5 * r.random() + 0.5) * math.sqrt(self.vx[i][j] ** 2 + self.vy[i][j] ** 2)
+
+        # move cells slightly
+        self.jiggle_turtles(0.5)
+
+    def jiggle_turtles(self, jsize):
+        """ Matches the "move-cells" method from the NetLogo Rib-ABM
+        """
+        # loop over all cells
+        for index in range(self.number_agents):
+            self.locations[index, 0] = min(66.5, max(1.5, self.locations[index, 0] + r.gauss(0, jsize)))
+            self.locations[index, 1] = min(15.5, max(0.5, self.locations[index, 1] + r.gauss(0, jsize)))
+
+            if self.locations[index, 1] > 15:
+                self.locations[index, 1] = 15 - r.expovariate(1)
+
+            if self.locations[index, 1] < 1:
+                self.locations[index, 1] = 1 + r.expovariate(1)
+
+            if self.locations[index, 0] < 2:
+                self.locations[index, 0] = 2 + r.expovariate(3)
+
+            if self.locations[index, 0] > 66:
+                self.locations[index, 0] = 66 - r.expovariate(3)
 
     @record_time
     def update_fields(self):
+        # set base value for pressure, redness, and blueness
         self.pressure[:] = 0
         self.redness[:] = 3
         self.blueness[:] = 3
 
+        # loop over all cells
         for index in range(self.number_agents):
-            # pressure
+            # add pressure of cell to current patch
             i, j = self.get_patch_location(index)
             self.pressure[i][j] += 1
 
-            # redness
+            # increase either redness or blueness density to patch based on cell state
             if self.states[index] == 1:
                 self.redness[i][j] += 1
             elif self.states[index] == 2:
                 self.blueness[i][j] += 1
 
-            # diffuse pressure 0.5 ten times
-            for _ in range(10):
-                temp = np.zeros((70, 19))
-                temp[1:-1, 1:-1] = self.pressure
-                add = 0.5 * self.pressure / 8
-                temp *= 0.5
-                temp[0:-2, 0:-2] += add
-                temp[2:, 2:] += add
-                temp[0:-2, 2:] += add
-                temp[2:, 0:-2] += add
-                temp[0:-2, 1:-1] += add
-                temp[2:, 1:-1] += add
-                temp[1:-1, 2:] += add
-                temp[1:-1, 0:-2] += add
-                self.pressure = temp[1:-1, 1:-1]
+        # call diffusion method for patch values
+        self.pressure, self.redness, self.blueness = diffuse(self.pressure, self.redness, self.blueness)
 
-            # diffuse redness 0.2 twice
-            for _ in range(2):
-                temp = np.zeros((70, 19))
-                temp[1:-1, 1:-1] = self.redness
-                add = 0.5 * self.redness / 8
-                temp *= 0.5
-                temp[0:-2, 0:-2] += add
-                temp[2:, 2:] += add
-                temp[0:-2, 2:] += add
-                temp[2:, 0:-2] += add
-                temp[0:-2, 1:-1] += add
-                temp[2:, 1:-1] += add
-                temp[1:-1, 2:] += add
-                temp[1:-1, 0:-2] += add
-                self.redness = temp[1:-1, 1:-1]
+        # calculate differential
+        for i in range(68):
+            for j in range(17):
+                if j < 2 or j == 16:
+                    self.vx[j][i] = 0
+                else:
+                    self.vx[j][i] = (self.pressure[j+1][i] - self.pressure[j-1][i]) / 2
 
-            # diffuse blueness 0.2 twice
-            for _ in range(10):
-                temp = np.zeros((70, 19))
-                temp[1:-1, 1:-1] = self.blueness
-                add = 0.5 * self.blueness / 8
-                temp *= 0.5
-                temp[0:-2, 0:-2] += add
-                temp[2:, 2:] += add
-                temp[0:-2, 2:] += add
-                temp[2:, 0:-2] += add
-                temp[0:-2, 1:-1] += add
-                temp[2:, 1:-1] += add
-                temp[1:-1, 2:] += add
-                temp[1:-1, 0:-2] += add
-                self.blueness = temp[1:-1, 1:-1]
-
-            # calculate differential
-            for i in range(17):
-                for j in range(68):
-                    if j < 0 or j == 67:
-                        self.vx[j][i] = 0
-                    else:
-                        self.vx[j][i] = (self.pressure[j+1][i] - self.pressure[j-1][i]) / 2
-
-                    if i == 0 or i == 16:
-                        self.vy[j][i] = 0
-                    else:
-                        self.vy[j][i] = (self.pressure[j][i+1] - self.pressure[j][i-1]) / 2
+                if i == 0 or i == 67:
+                    self.vy[j][i] = 0
+                else:
+                    self.vy[j][i] = (self.pressure[j][i+1] - self.pressure[j][i-1]) / 2
 
     @record_time
-    def update_populations(self):
-        """ Overrides default update_populations method from
-            Simulation class.
+    def step_image(self, background=(0, 0, 0), origin_bottom=True):
+        """ Creates an image of the simulation space.
         """
-        # get indices of hatching/dying agents with Boolean mask
-        add_indices = np.arange(self.number_agents)[self.hatching]
-        remove_indices = np.arange(self.number_agents)[self.removing]
+        # only continue if outputting images
+        if self.output_images:
+            # get path and make sure directory exists
+            check_direct(self.images_path)
 
-        # count how many added/removed agents
-        num_added = len(add_indices)
-        num_removed = len(remove_indices)
+            # scale image size based on environment
+            scale = 60
 
-        # go through each agent array name
-        for name in self.array_names:
-            # copy the indices of the agent array data for the hatching agents
-            copies = self.__dict__[name][add_indices]
+            # make sure first two columns are black, make image background based on SHH intensity
+            self.intens[:, 0:2] = 0
+            image = cv2.resize(np.floor(self.intens), scale * np.array(self.size[:2]), interpolation=cv2.INTER_AREA)
+            image = np.dstack((image, image, image))
 
-            # hatch the new agents in radius 1 from reproducing agent
-            if name == "locations":
-                for index in range(len(copies)):
-                    # get new location position
-                    new_location = copies[index] + 1 * self.random_vector()
+            # go through all of the agents
+            for index in range(self.number_agents):
+                # get xy coordinates and the axis lengths
+                x, y = int(scale * (self.locations[index][0])), int(scale * (self.locations[index][1]))
+                major, minor = int(scale * self.radii[index]), int(scale * self.radii[index])
 
-                    # check that the new location is within the space, otherwise use boundary values
-                    for i in range(3):
-                        if new_location[i] > self.size[i]:
-                            copies[index][i] = self.size[i]
-                        elif new_location[i] < 0:
-                            copies[index][i] = 0
-                        else:
-                            copies[index][i] = new_location[i]
+                # get color of cell based on state
+                if self.states[index] == 0:
+                    color = (0, 255, 255)
+                elif self.states[index] == 1:
+                    color = (0, 0, 255)
+                else:
+                    color = (255, 0, 0)
 
-            # add/remove agent data to/from the arrays
-            self.__dict__[name] = np.concatenate((self.__dict__[name], copies), axis=0)
-            self.__dict__[name] = np.delete(self.__dict__[name], remove_indices, axis=0)
+                # draw the agent and a black outline to distinguish overlapping agents
+                image = cv2.ellipse(image, (x, y), (major, minor), 0, 0, 360, color, -1)
+                image = cv2.ellipse(image, (x, y), (major, minor), 0, 0, 360, (0, 0, 0), 1)
 
-        # go through each graph name
-        for graph_name in self.graph_names:
-            # add/remove vertices from the graph
-            self.__dict__[graph_name].add_vertices(num_added)
-            self.__dict__[graph_name].delete_vertices(remove_indices)
+            # if the origin should be bottom-left flip it, otherwise it will be top-left
+            if origin_bottom:
+                image = cv2.flip(image, 0)
 
-        # change total number of agents and print info to terminal
-        self.number_agents += num_added - num_removed
-        print("\tAdded " + str(num_added) + " agents")
-        print("\tRemoved " + str(num_removed) + " agents")
+            # save the image as a PNG
+            image_compression = 4  # image compression of png (0: no compression, ..., 9: max compression)
+            file_name = f"{self.name}_image_{self.current_step}.png"
+            cv2.imwrite(self.images_path + file_name, image, [cv2.IMWRITE_PNG_COMPRESSION, image_compression])
 
-        # clear the hatching/removing arrays for the next step
-        self.hatching[:] = False
-        self.removing[:] = False
-
-    @classmethod
-    def simulation_mode_0(cls, name, output_dir):
-        """ Override the default mode 0 method from the simulation
-            class.
-        """
-        # make simulation instance, update name, and add paths
-        sim = cls()
-        sim.name = name
-        sim.set_paths(output_dir)
-
-        # set up the simulation agents and run the simulation
-        sim.full_setup()
-        sim.run_simulation()
