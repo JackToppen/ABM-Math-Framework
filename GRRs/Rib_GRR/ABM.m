@@ -109,16 +109,3 @@ end
 
 Total = [bTotal rTotal yTotal];
 plot(Total);
-
-%{
-%% Compute and plot red/blue distributions
-
-dist_ten = [transpose(Blue(10,:)) transpose(Red(10,:))];
-figure; plot(dist_ten);
-dist_twenty = [transpose(Blue(20,:)) transpose(Red(20,:))];
-figure; plot(dist_twenty);
-dist_thirty = [transpose(Blue(30,:)) transpose(Red(30,:))];
-figure; plot(dist_thirty);
-dist_end = [transpose(Blue((t-1),:)) transpose(Red((t-1),:))];
-figure; plot(dist_end);
-%}
