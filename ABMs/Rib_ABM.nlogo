@@ -1,3 +1,7 @@
+; Modified ABM from https://doi.org/10.7554/eLife.29144
+; Added population plot and fixed CellFraction plot
+; Modifications by Daniel A. Cruz
+
 extensions [vid]
 breed [whitecells a-white]
 breed [bluecells a-blue]
@@ -496,7 +500,7 @@ INPUTBOX
 1032
 535
 videofile
-test.mp4
+0
 1
 0
 String
