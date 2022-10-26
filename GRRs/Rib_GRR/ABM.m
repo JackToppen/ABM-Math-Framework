@@ -1,3 +1,7 @@
+% Script written by Daniel A. Cruz
+% GRR approximation for rib ABM from https://doi.org/10.7554/eLife.29144
+% See associated manuscript for more details
+
 %% Parameters
 clear;
 close all;
