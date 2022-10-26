@@ -1,3 +1,7 @@
+% Script written by Daniel A. Cruz
+% GRR approximation for GoL-like ABM
+% See associated manuscript for more details
+
 % Clean start
 clear;
 % (Square) Environment length
