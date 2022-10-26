@@ -1,3 +1,6 @@
+; Code written by Daniel A. Cruz and Jack Toppen
+; See associated manuscript for more information.
+
 extensions [ vid csv ]
 breed [ cells cell ]
 turtles-own [ reproducing dying Nsize ]
@@ -6,77 +9,65 @@ to setup
   clear-all
   vid:reset-recorder
 
-  ; check that thresholds are valid
-  ifelse (die-lower >= die-upper) or (rep-lower >= rep-upper) [
+  ifelse (die-lower >= die-upper) or (rep-lower >= rep-upper)
+  [
     user-message ("The thresholds for death and/or reproduction are invalid.")
+
     clear-ticks
   ]
   [
-    ; create initial population of cells
     create-cells (num-cells) [
       setxy random-xcor random-ycor
       set shape "dot"
       set color white
-      set reproducing false    ; variable to indicate whether producing a new agent
-      set dying false    ; variable to indicate whether agent is dying
-      set Nsize count other cells-on patch-here    ; hold number of agents on same patch
+      set reproducing false
+      set dying false
+      set Nsize count other cells-on patch-here
     ]
 
-    ; set tick counter to zero
     reset-ticks
   ]
 end
 
 to go
-  ; run agent methods for each cell
   ask cells [ set Nsize count other cells-on patch-here ]
   ask cells [ set color white ]
-  ask cells [ birth ]
-  ask cells [ death ]
-  ask cells [ update ]
+  ask cells [ update_start ]
+  ask cells [ reproduce ]
+  ask cells [ update_end ]
   ask cells [ move ]
-
-  ; advance to next tick
   tick
 end
 
-to birth
-  ; mark cell to hatch if sufficient number of other cells on patch
-  if ((count other cells-on patch-here) >= rep-lower) and ((count other cells-on patch-here) <= rep-upper) [
-    set reproducing true
-  ]
-end
-
-to death
-  ; mark cell for death if too many/few other cells on patch
+to update_start
   if ((count other cells-on patch-here) < die-lower) or ((count other cells-on patch-here) > die-upper) [
     set dying true
   ]
 end
 
-to update
-  ; Note: Cells are first marked for birth/death prior to being removed or adding new cells. This allows
-  ; cells that will die during the step to still add new cells should the thresholds for doing so are met.
+to reproduce
+  if ((count other cells-on patch-here) >= rep-lower) and ((count other cells-on patch-here) <= rep-upper) [
+    set reproducing true
+  ]
+end
 
-  ; if cell was marked to hatch, add new cell
+to update_end
   if reproducing [
     hatch 1 [
+      set color white
       set reproducing false
       set dying false
     ]
   ]
 
-  ; if cell was marked for death, remove it from simulation
   if dying [
     die
   ]
 
-  ; change hatching cell state back to non-hatching
   set reproducing false
 end
 
 to move
-  ; move one unit in a random direction
   rt random-float 360
   fd 1
 end
@@ -127,7 +118,7 @@ CHOOSER
 record-type
 record-type
 "None" "Interface" "View"
-0
+2
 
 BUTTON
 5
