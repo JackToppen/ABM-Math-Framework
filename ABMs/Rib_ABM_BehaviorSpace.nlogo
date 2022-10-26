@@ -1,3 +1,7 @@
+; Modified ABM from https://doi.org/10.7554/eLife.29144
+; Changed go function to generate simulation data sets with BehaviorSpace
+; Modifications by Daniel A. Cruz
+
 extensions [vid]
 breed [whitecells a-white]
 breed [bluecells a-blue]
@@ -926,7 +930,7 @@ NetLogo 6.2.2
   <experiment name="normal" repetitions="100" runMetricsEveryStep="true">
     <setup>setup</setup>
     <go>go</go>
-    <timeLimit steps="46"/>
+    <timeLimit steps="45"/>
     <exitCondition>mean [pressure] of patches with [pxcor = 62] &gt;= 3</exitCondition>
     <metric>count whitecells</metric>
     <metric>count redcells</metric>
@@ -968,7 +972,7 @@ NetLogo 6.2.2
   <experiment name="Apaf1-KO" repetitions="100" runMetricsEveryStep="true">
     <setup>setup</setup>
     <go>go</go>
-    <timeLimit steps="46"/>
+    <timeLimit steps="45"/>
     <exitCondition>mean [pressure] of patches with [pxcor = 62] &gt;= 3</exitCondition>
     <metric>count whitecells</metric>
     <metric>count redcells</metric>
@@ -1010,7 +1014,7 @@ NetLogo 6.2.2
   <experiment name="shh-KO" repetitions="100" runMetricsEveryStep="true">
     <setup>setup</setup>
     <go>go</go>
-    <timeLimit steps="46"/>
+    <timeLimit steps="45"/>
     <exitCondition>mean [pressure] of patches with [pxcor = 62] &gt;= 3</exitCondition>
     <metric>count whitecells</metric>
     <metric>count redcells</metric>
@@ -1052,7 +1056,7 @@ NetLogo 6.2.2
   <experiment name="Apaf1_shh-KO" repetitions="100" runMetricsEveryStep="true">
     <setup>setup</setup>
     <go>go</go>
-    <timeLimit steps="46"/>
+    <timeLimit steps="45"/>
     <exitCondition>mean [pressure] of patches with [pxcor = 62] &gt;= 3</exitCondition>
     <metric>count whitecells</metric>
     <metric>count redcells</metric>
@@ -1083,6 +1087,53 @@ NetLogo 6.2.2
     </enumeratedValueSet>
     <enumeratedValueSet variable="shh-intensity-log">
       <value value="-2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nticks">
+      <value value="46"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="pBlue1">
+      <value value="0.4"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="shh_sweep" repetitions="100" runMetricsEveryStep="true">
+    <setup>setup</setup>
+    <go>go</go>
+    <timeLimit steps="45"/>
+    <exitCondition>mean [pressure] of patches with [pxcor = 62] &gt;= 3</exitCondition>
+    <metric>count whitecells</metric>
+    <metric>count redcells</metric>
+    <metric>count bluecells</metric>
+    <enumeratedValueSet variable="initsizemult">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="shh-xport">
+      <value value="12"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="cdduration">
+      <value value="30"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="prolifratemult">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="celldeathmult">
+      <value value="0.3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="videofile">
+      <value value="&quot;test.mp4&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="pRed1">
+      <value value="0.4"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="localfate">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="shh-intensity-log">
+      <value value="-0.4"/>
+      <value value="-0.2"/>
+      <value value="0"/>
+      <value value="0.2"/>
+      <value value="0.4"/>
+      <value value="0.8"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="nticks">
       <value value="46"/>
