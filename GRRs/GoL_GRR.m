@@ -2,24 +2,33 @@
 % GRR approximation for GoL-like ABM
 % See associated manuscript for more details
 
-% Clean start
+%% Parameters
 clear;
+close all;
+
 % (Square) Environment length
 env_length = 20;
 envS = env_length^2;
+
 % Ending time step
-enT = 50;
+enT = 25;
+
 % Starting Population
 stPop = 800;
+
 % Lower bound for living (transition)
 lt = 2;
+
 % Upper bound for living (transition)
 ut = 8;
+
 % Lower bound for production
 lp = 2;
+
 % Upper bound for production
 up = 4;
 
+%% State variables
 % Remaining patch array
 Rpatch = zeros([ enT 1]);
 % Occupied patch array
@@ -35,7 +44,7 @@ Ofsp = zeros([ enT 1]);
 % Population array
 Pop = zeros([ enT 1]);
 
-% Initialization
+%% Initialization
 for i = lt:ut
     temp = subs(evalin(symengine, 'envS * nchoosek(stPop,(i+1)) * ((1/(envS))^(i+1)) * ((1-(1/(envS)))^(stPop-i-1))'));
     Rpatch(1) = Rpatch(1) + temp;
@@ -48,7 +57,7 @@ Pop(1) = Surv(1) + Ofsp(1);
 NgPrb(1) = (Rpatch(1)-1)/(envS - 1);
 Opatch(1) = Rpatch(1)*(2-NgPrb(1));
 
-% Iteration
+%% Iteration
 for t = 2:enT
     tempPop = Pop(t-1);
     tempPatch = Opatch(t-1);
@@ -64,3 +73,7 @@ for t = 2:enT
     NgPrb(t) = (Rpatch(t)-1)/(envS - 1);
     Opatch(t) = Rpatch(t)*(2-NgPrb(t));
 end
+
+%% Compute and plot totals
+
+plot(Pop);
