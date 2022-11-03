@@ -10,7 +10,7 @@ to setup
   vid:reset-recorder
 
   ; check that thresholds are valid
-  ifelse (die-lower >= die-upper) or (rep-lower >= rep-upper) [
+  ifelse (surv-lower >= surv-upper) or (rep-lower >= rep-upper) [
     user-message ("The thresholds for death and/or reproduction are invalid.")
 
     clear-ticks
@@ -54,7 +54,7 @@ end
 
 to death
   ; mark cell for death if too many/few other cells on patch
-  if ((count other cells-on patch-here) < die-lower) or ((count other cells-on patch-here) > die-upper) [
+  if ((count other cells-on patch-here) < surv-lower) or ((count other cells-on patch-here) > surv-upper) [
     set dying true
   ]
 end
@@ -254,8 +254,8 @@ SLIDER
 80
 195
 113
-die-lower
-die-lower
+surv-lower
+surv-lower
 0
 10
 2.0
@@ -269,8 +269,8 @@ SLIDER
 120
 195
 153
-die-upper
-die-upper
+surv-upper
+surv-upper
 0
 10
 8.0
@@ -653,7 +653,7 @@ NetLogo 6.3.0
     <go>go</go>
     <timeLimit steps="100"/>
     <metric>count turtles</metric>
-    <enumeratedValueSet variable="die-lower">
+    <enumeratedValueSet variable="surv-lower">
       <value value="2"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="num-cells">
@@ -669,7 +669,7 @@ NetLogo 6.3.0
     <enumeratedValueSet variable="rep-lower">
       <value value="2"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="die-upper">
+    <enumeratedValueSet variable="surv-upper">
       <value value="8"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="rep-upper">
@@ -687,7 +687,7 @@ NetLogo 6.3.0
     <go>go</go>
     <timeLimit steps="100"/>
     <metric>count turtles</metric>
-    <enumeratedValueSet variable="die-lower">
+    <enumeratedValueSet variable="surv-lower">
       <value value="2"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="num-cells">
@@ -699,7 +699,7 @@ NetLogo 6.3.0
     <enumeratedValueSet variable="rep-lower">
       <value value="2"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="die-upper">
+    <enumeratedValueSet variable="surv-upper">
       <value value="6"/>
       <value value="8"/>
     </enumeratedValueSet>
@@ -719,7 +719,7 @@ NetLogo 6.3.0
     <go>go</go>
     <timeLimit steps="100"/>
     <metric>count turtles</metric>
-    <enumeratedValueSet variable="die-lower">
+    <enumeratedValueSet variable="surv-lower">
       <value value="2"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="num-cells">
@@ -731,7 +731,7 @@ NetLogo 6.3.0
     <enumeratedValueSet variable="rep-lower">
       <value value="2"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="die-upper">
+    <enumeratedValueSet variable="surv-upper">
       <value value="6"/>
       <value value="8"/>
     </enumeratedValueSet>
@@ -751,7 +751,7 @@ NetLogo 6.3.0
     <go>go</go>
     <timeLimit steps="100"/>
     <metric>count turtles</metric>
-    <enumeratedValueSet variable="die-lower">
+    <enumeratedValueSet variable="surv-lower">
       <value value="2"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="num-cells">
@@ -763,7 +763,7 @@ NetLogo 6.3.0
     <enumeratedValueSet variable="rep-lower">
       <value value="2"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="die-upper">
+    <enumeratedValueSet variable="surv-upper">
       <value value="6"/>
       <value value="8"/>
     </enumeratedValueSet>
