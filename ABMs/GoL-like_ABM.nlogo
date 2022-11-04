@@ -10,7 +10,7 @@ to setup
   vid:reset-recorder
 
   ; check that thresholds are valid
-  ifelse (surv-lower >= surv-upper) or (rep-lower >= rep-upper) [
+  ifelse (surv-lower > surv-upper) or (rep-lower > rep-upper) [
     user-message ("The thresholds for death and/or reproduction are invalid.")
 
     clear-ticks
@@ -62,7 +62,7 @@ end
 to update
   ; Note: Cells are first marked for birth/death prior to being removed or adding new cells. This allows
   ; cells that will die during the step to still add new cells should the thresholds for doing so are met.
-  
+
   ; if cell was marked to hatch, add new cell
   if reproducing [
     hatch 1 [
@@ -76,7 +76,7 @@ to update
   if dying [
     die
   ]
-  
+
   ; change hatching cell state back to non-hatching
   set reproducing false
 end
@@ -312,7 +312,7 @@ HORIZONTAL
 @#$#@#$#@
 ## WHAT IS IT?
 
-This ABM is based on the Game of Life cellular automata, generalized to mobile agents ona continuous, bounded environment.
+This ABM is based on the Game of Life cellular automata, generalized to mobile agents on a continuous, bounded environment.
 
 ## HOW IT WORKS
 
@@ -324,7 +324,7 @@ In the interface, the user can choose most of the parameters above (sometimes wi
 
 ## THINGS TO NOTICE
 
-For threshold ranges (e.g. determining if a cell is lonely vs overcrowded), the ABM will detected if the lower threshold input is the same (or higher) as the upper threshold input. The ABM will not run in these circumstances.
+For threshold ranges (e.g. determining if a cell is lonely vs overcrowded), the ABM will detected if the lower threshold input is higher as the upper threshold input. The ABM will not run in these circumstances.
 
 ## THINGS TO TRY
 
@@ -643,7 +643,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.3.0
+NetLogo 6.2.2
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
