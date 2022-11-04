@@ -7,26 +7,25 @@ clear;
 close all;
 
 % (Square) Environment length
-env_length = 20;
-envS = env_length^2;
+w = 20;
 
 % Ending time step
 enT = 25;
 
 % Starting Population
-stPop = 800;
+n = 500;
 
-% Lower bound for living (transition)
-lt = 2;
+% Lower bound for surviving (transition)
+ls = 2;
 
-% Upper bound for living (transition)
-ut = 8;
+% Upper bound for reproducing (transition)
+us = 8;
 
 % Lower bound for production
-lp = 2;
+lr = 2;
 
 % Upper bound for production
-up = 4;
+ur = 4;
 
 %% State variables
 % Remaining patch array
@@ -44,12 +43,19 @@ Ofsp = zeros([ enT 1]);
 % Population array
 Pop = zeros([ enT 1]);
 
+% Loop variables
+envS = w^2;
+l = min(ls,lr);
+u = max(us,ur);
+
 %% Initialization
-for i = lt:ut
-    temp = subs(evalin(symengine, 'envS * nchoosek(stPop,(i+1)) * ((1/(envS))^(i+1)) * ((1-(1/(envS)))^(stPop-i-1))'));
+for i = l:u
+    temp = subs(evalin(symengine, 'envS * nchoosek(n,(i+1)) * ((1/(envS))^(i+1)) * ((1-(1/(envS)))^(n-i-1))'));
     Rpatch(1) = Rpatch(1) + temp;
-    Surv(1) = Surv(1) + (i+1)*temp;
-    if (i >= lp) && (i <= up)
+    if (i >= ls) && (i <= us)
+        Surv(1) = Surv(1) + (i+1)*temp;
+    end
+    if (i >= lr) && (i <= ur)
         Ofsp(1) = Ofsp(1) + (i+1)*temp;
     end
 end
@@ -61,11 +67,13 @@ Opatch(1) = Rpatch(1)*(2-NgPrb(1));
 for t = 2:enT
     tempPop = Pop(t-1);
     tempPatch = Opatch(t-1);
-    for i = lt:ut
+    for i = l:u
         temp = subs(evalin(symengine, 'tempPatch * nchoosek(tempPop,(i+1)) * ((1/(tempPatch))^(i+1)) * ((1-(1/(tempPatch)))^(tempPop-i-1))'));
         Rpatch(t) = Rpatch(t) + temp;
-        Surv(t) = Surv(t) + (i+1)*temp;
-        if (i >= lp) && (i <= up)
+        if (i >= ls) && (i <= us)
+            Surv(t) = Surv(t) + (i+1)*temp;
+        end
+        if (i >= lr) && (i <= ur)
             Ofsp(t) = Ofsp(t) + (i+1)*temp;
         end
     end
@@ -74,6 +82,6 @@ for t = 2:enT
     Opatch(t) = Rpatch(t)*(2-NgPrb(t));
 end
 
-%% Compute and plot totals
+%% Plot population total
 
 plot(Pop);
