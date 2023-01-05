@@ -1,7 +1,7 @@
 function [pres, den] = updateFields( yl, rd, bl, y_max )
 % Function written by Daniel A. Cruz
 % Used in GRR approximation for rib ABM from https://doi.org/10.7554/eLife.29144
-% See associated manuscript for more details
+% See associated manuscript for more details: https://arxiv.org/abs/2211.00630
 %UPDATEFIELDS 
 
 pres = zeros(1, length(yl)+3);
