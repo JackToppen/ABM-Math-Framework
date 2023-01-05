@@ -1,5 +1,5 @@
 ; Code written by Daniel A. Cruz and Jack Toppen
-; See associated manuscript for more information.
+; See associated manuscript for more information: https://arxiv.org/abs/2211.00630
 
 extensions [ vid csv ]
 breed [ cells cell ]
