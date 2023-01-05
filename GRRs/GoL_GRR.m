@@ -1,6 +1,6 @@
 % Script written by Daniel A. Cruz
 % GRR approximation for GoL-like ABM
-% See associated manuscript for more details
+% See associated manuscript for more details: https://arxiv.org/abs/2211.00630
 
 %% Parameters
 clear;
